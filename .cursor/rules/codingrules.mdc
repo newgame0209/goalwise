@@ -1,0 +1,400 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+あなたは高度な問題解決能力を持つAIアシスタントです。以下の指示に従って、効率的かつ正確にタスクを遂行してください。
+
+# 基本動作原則
+
+1. **指示の受信と理解**
+   - ユーザーからの指示を注意深く読み取り
+   - 不明点がある場合は、具体的な質問を行う
+   - 技術的な制約や要件を明確に把握
+
+2. **深い分析とプランニング**
+   ```markdown
+   ## タスク分析
+   - 目的：[全ての機能を正常に仕様通りに実装し、MVPを完成させること]
+   - 技術要件：[### 技術スタック
+- フレームワーク: React + TypeScript
+- ビルドツール: Vite
+- UIライブラリ: shadcn/ui
+- スタイリング: Tailwind CSS
+- 状態管理: React Query
+- ルーティング: React Router
+- アイコン: lucide-react
+- グラフ表示: recharts]
+   - 実装手順：[src/docs/system-specification.mdに従って実行]
+   - 品質基準：[現状のUIの構造やデザインを壊すことなく実装]
+   ```
+
+3. **実装計画の策定**
+   ```markdown
+   ## 実装計画
+   1. [src/docs/system-specification.mdを確認]
+
+   2. [ファイルの実装確認やコンポーネントの確認、src/docs/system-specification.mdの確認など現状を把握後に計画従ってタスクを段階的に実行]
+
+　 3. [作業後にユーザーに報告]
+
+　 4. [ユーザーが確認して問題なければ次のタスクに着手]
+      ...
+   ```
+
+4. **段階的な実装と検証**
+   - 各ステップの完了後に検証
+   - 問題発生時の即時対応
+   - 品質基準との照合
+
+5. **継続的なフィードバック**
+   - 実装の進捗状況を定期的に報告
+   - 重要な判断ポイントでの確認
+   - 問題発生時の迅速な報告
+
+---
+
+# 技術スタックと制約
+
+## フロントエンド仕様
+
+### 技術スタック
+- フレームワーク: React + TypeScript
+- ビルドツール: Vite
+- UIライブラリ: shadcn/ui
+- スタイリング: Tailwind CSS
+- 状態管理: React Query
+- ルーティング: React Router
+- アイコン: lucide-react
+- グラフ表示: recharts
+
+### ファイル構造
+```
+src/
+├── components/         # 共通コンポーネント
+│   ├── ChatWidget/     # AIチャットボット関連
+│   │   ├── ChatMessage.tsx
+│   │   ├── ChatState.tsx
+│   │   ├── ChatWidget.tsx
+│   │   ├── TypingIndicator.tsx
+│   │   └── index.ts
+│   ├── ContentGenerator.tsx
+│   ├── FeatureCard.tsx
+│   ├── Footer.tsx
+│   ├── Hero.tsx
+│   ├── LearningPlan.tsx
+│   ├── MaterialCard.tsx
+│   ├── MaterialContent.tsx
+│   ├── MaterialSidebar.tsx
+│   ├── Navbar.tsx
+│   ├── ProtectedRoute.tsx
+│   └── ui/             # shadcn/uiコンポーネント
+├── contexts/
+│   └── AuthContext.tsx # 認証コンテキスト
+├── docs/               # ドキュメント
+│   ├── implementation-roadmap.md
+│   ├── prioritized-tasks.md
+│   └── system-specification.md
+├── hooks/              # カスタムフック
+│   ├── use-mobile.tsx
+│   └── use-toast.ts
+├── integrations/       # 外部連携
+│   └── supabase/       # Supabase連携
+│       ├── client.ts
+│       └── types.ts
+├── lib/                # ユーティリティ
+│   └── utils.ts
+├── pages/              # ページコンポーネント
+│   ├── Dashboard.tsx
+│   ├── Index.tsx
+│   ├── Login.tsx
+│   ├── MaterialDetail.tsx
+│   ├── MaterialSample.tsx  # 教材表示のサンプルページ（本番環境の教材ページとして使用）
+│   ├── Materials.tsx
+│   ├── NotFound.tsx
+│   ├── Profiling.tsx
+│   └── SignUp.tsx
+├── services/           # サービス
+│   └── openai.ts
+├── App.css
+├── App.tsx             # メインアプリコンポーネント
+├── index.css
+├── main.tsx            # エントリーポイント
+└── vite-env.d.ts
+
+### 主要コンポーネント詳細
+1. **認証関連**
+   - **Login.tsx**: メールアドレスとパスワードによるログイン機能、Supabaseの認証APIを使用
+   - **SignUp.tsx**: 新規ユーザー登録、必須項目はメールアドレスとパスワード
+   - **ProtectedRoute.tsx**: 認証ステータスに基づくルート保護、未認証ユーザーのリダイレクト処理、およびプロファイル未完了ユーザーのプロファイリングページへの誘導
+
+2. **プロファイリング機能**
+   - **Profiling.tsx**: 
+     - プロファイリング進行状況の表示
+     - AIチャットUIを通じたユーザー情報収集
+     - プロファイル完了検出とカリキュラム生成プロセスの開始
+     - 生成進捗表示とステップ説明
+   - **ChatWidget/**: 
+     - **ChatWidget.tsx**: チャットインターフェースのメインコンポーネント、メッセージ入力と送信機能
+     - **ChatMessage.tsx**: ユーザーとAIメッセージの表示、Markdownレンダリング対応
+     - **TypingIndicator.tsx**: AIの応答待ち表示
+     - **ChatState.tsx**: チャット状態・メッセージ管理、プロファイル完了フラグの管理
+
+3. **ダッシュボード機能**
+   - **Dashboard.tsx**: 
+     - ユーザーメインダッシュボード画面
+     - 学習進捗サマリー表示
+     - 次の推奨教材カード表示
+     - カリキュラム概要表示
+   - **MaterialCard.tsx**: 
+     - 教材カード表示コンポーネント
+     - タイトル、説明、画像、カテゴリタグ、所要時間、進捗率表示
+     - 難易度バッジ（初級/中級/上級）表示
+     - クリック時の詳細ページへの遷移
+
+4. **教材関連**
+   - **Materials.tsx**: 教材一覧ページ、フィルタリング機能
+   - **MaterialDetail.tsx**: 教材詳細ページ、学習進捗管理
+   - **MaterialSample.tsx**: 教材表示の本番環境用サンプルページ、サイドバー付きのタブベースインターフェース
+   - **MaterialContent.tsx**: メインコンテンツ表示コンポーネント、タブによる内容切り替え
+   - **MaterialSidebar.tsx**: 教材のナビゲーションサイドバー、進捗表示
+   - **ContentGenerator.tsx**: AIによるコンテンツ自動生成コンポーネント
+
+5. **共通コンポーネント**
+   - **Navbar.tsx**: ナビゲーションバー、ロゴ、メニュー、認証状態表示
+   - **Footer.tsx**: フッター情報
+   - **FeatureCard.tsx**: 機能説明カード（主にランディングページで使用）
+   - **Hero.tsx**: ランディングページのヒーローセクション
+   - **LearningPlan.tsx**: 学習計画表示コンポーネント
+   - **ui/**: shadcn/uiベースのデザインシステムコンポーネント群
+
+### ルーティング構造
+```
+/                   # ランディングページ (Index.tsx)
+/login              # ログインページ (Login.tsx)
+/signup             # 新規登録ページ (SignUp.tsx)
+/profiling          # プロファイリングページ (Profiling.tsx)
+/dashboard          # ダッシュボード (Dashboard.tsx)
+/materials          # 教材一覧 (Materials.tsx)
+/materials/:id      # 教材詳細 (MaterialDetail.tsx)
+/material-sample    # 教材サンプルページ (MaterialSample.tsx)
+*                   # 404ページ (NotFound.tsx)
+```
+
+### 状態管理
+1. **認証状態**
+   - `AuthContext.tsx`: ユーザー認証状態の管理、ログイン/ログアウト機能、ユーザー情報の提供
+   - 主要状態: `user`、`loading`、`signUp`、`signIn`、`signOut`関数
+
+2. **チャット状態**
+   - `ChatState.tsx`: チャットウィジェットの状態管理
+   - 主要状態: `isOpen`, `isMinimized`, `messages`, `profileCompleted`
+   - 主要関数: `setIsOpen`, `setIsMinimized`, `addMessage`, `setProfileCompleted`
+
+3. **トースト通知**
+   - `use-toast.ts`: アプリケーション全体の通知システム
+   - 主要関数: `toast`, `useToast`
+
+## バックエンド仕様 (Supabase)
+
+### データベース詳細構造
+
+1. **profiles テーブル**
+```sql
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users ON DELETE CASCADE,
+  username TEXT,
+  full_name TEXT,
+  avatar_url TEXT,
+  profile_data JSONB,
+  profile_completed BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+2. **user_curriculum テーブル**
+```sql
+CREATE TABLE user_curriculum (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  curriculum_data JSONB NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+### JSONBデータ構造
+
+1. **profile_data**の構造
+```json
+{
+  "answers": [
+    {
+      "question": "現在のプログラミングスキルレベルを教えてください",
+      "answer": "初心者（プログラミング経験なし）"
+    },
+    {
+      "question": "学習の目的は何ですか？",
+      "answer": "就職・転職のため"
+    },
+    {
+      "question": "特に興味のある分野はありますか？",
+      "answer": "Webフロントエンド開発"
+    },
+    ...
+  ],
+  "completed": true,
+  "skills": {
+    "programming": 1,
+    "webDevelopment": 0,
+    "dataScience": 0,
+    ...
+  },
+  "interests": ["webFrontend", "mobileApp"],
+  "goals": ["career", "project"],
+  "timeCommitment": "medium",
+  "learningStyle": "visual"
+}
+```
+
+2. **curriculum_data**の構造
+```json
+{
+  "title": "Webフロントエンド開発者への道",
+  "description": "プログラミング未経験からWebフロントエンドエンジニアになるためのカリキュラム",
+  "estimated_duration": "12週間",
+  "difficulty": "beginner",
+  "skills_covered": ["HTML", "CSS", "JavaScript", "React"],
+  "modules": [
+    {
+      "id": "module1",
+      "title": "HTML・CSS基礎",
+      "description": "Webサイト構築の基礎となるHTML・CSSの基本を学びます",
+      "estimated_duration": "2週間",
+      "units": [
+        {
+          "id": "unit1-1",
+          "title": "HTMLの基本構造",
+          "type": "lesson",
+          "content_id": "html-basics",
+          "completed": false
+        },
+        ...
+      ]
+    },
+    ...
+  ]
+}
+```
+
+### 認証システム
+- Supabaseの組み込み認証システムを使用
+- 認証方法
+  - メールパスワード認証: 現在実装済み
+  - ソーシャル認証（Google, GitHub）: 実装予定
+- 認証後のフロー:
+  1. ユーザー登録完了時にTriggerによるプロファイルレコード自動生成
+  2. 初回ログイン時にプロファイリングページへ誘導
+  3. プロファイル完了後はダッシュボードへ遷移
+
+### バックエンド処理フロー
+1. **ユーザー登録**
+   - フロント: SignUp.tsxでメールアドレス・パスワード登録
+   - バックエンド: Supabase Auth API経由でユーザー作成
+   - トリガー: `on_auth_user_created`によるprofilesテーブルへのレコード自動作成
+
+2. **プロファイリング**
+   - フロント: Profiling.tsxとChatWidget.tsxでユーザー情報収集
+   - バックエンド: profilesテーブルのprofile_dataカラムにJSONB形式で回答データを保存
+   - 完了時: profile_completedをTRUEに更新
+
+3. **カリキュラム生成**
+   - フロント: プロファイル完了検出後にカリキュラム生成プロセス開始
+   - バックエンド: （今後実装）OpenAIのAPIを使用して、profile_dataに基づいたカリキュラム生成
+   - 保存先: user_curriculumテーブルのcurriculum_dataカラムにJSONB形式で保存
+
+4. **学習管理**
+   - 進捗追跡: user_curriculumテーブルのcurriculum_dataを更新
+   - 教材アクセス: 教材IDに基づいた教材コンテンツの取得と表示
+
+# 品質管理プロトコル
+
+## 1. コード品質
+- TypeScriptの厳格な型チェック
+- ESLintルールの完全準拠
+- コードの一貫性維持
+
+## 2. パフォーマンス
+- 不要な再レンダリングの防止
+- 効率的なデータフェッチング
+- バンドルサイズの最適化
+
+## 3. セキュリティ
+- 入力値の厳格なバリデーション
+- 適切なエラーハンドリング
+- 機密情報の安全な管理
+
+## 4. UI/UX
+- レスポンシブデザインの確保
+- アクセシビリティ基準の遵守
+- 一貫したデザインシステムの維持
+
+---
+
+# 実装プロセス
+
+## 1. 初期分析フェーズ
+```markdown
+### 要件分析
+- 機能要件の特定
+- 技術的制約の確認
+- 既存コードとの整合性確認
+
+### リスク評価
+- 潜在的な技術的課題
+- パフォーマンスへの影響
+- セキュリティリスク
+```
+
+## 2. 実装フェーズ
+- 段階的な実装
+- 各段階での検証
+- コード品質の維持
+
+## 3. 検証フェーズ
+- 単体テスト
+- 問題なければgitにコミット・プッシュしてデプロイして確認
+
+## 4. 最終確認
+- 要件との整合性
+- コード品質
+- ドキュメント完成度
+
+---
+
+# エラー対応プロトコル
+
+1. **問題の特定**
+   - エラーメッセージの解析
+   - 影響範囲の特定
+   - 原因の切り分け
+
+2. **解決策の策定**
+   - 複数の対応案の検討
+   - リスク評価
+   - 最適解の選択
+
+3. **実装と検証**
+   - 解決策の実装
+   - テストによる検証
+   - 副作用の確認
+
+4. **文書化**
+   - 問題と解決策の記録
+   - 再発防止策の提案
+   - 学習点の共有
+
+---
+
+以上の指示に従い、確実で質の高い実装を行います。不明点や重要な判断が必要な場合は、必ず確認を取ります。
