@@ -1,4 +1,3 @@
-
 import { Message } from './ChatWidget';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
@@ -26,10 +25,10 @@ export default function ChatMessage({ message }: ChatMessageProps) {
       </Avatar>
       
       <div
-        className={`px-4 py-3 rounded-lg max-w-[85%] ${
+        className={`px-4 py-3 max-w-[85%] ${
           isUser
-            ? 'bg-primary text-primary-foreground rounded-tr-none'
-            : 'bg-muted rounded-tl-none'
+            ? 'bg-primary text-primary-foreground rounded-lg rounded-tr-none'
+            : 'bg-muted rounded-lg rounded-tl-none'
         }`}
       >
         <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>

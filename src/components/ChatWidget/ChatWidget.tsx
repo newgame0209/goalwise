@@ -43,7 +43,7 @@ type ProfileQuestionnaireForm = {
 export default function ChatWidget() {
   const { user } = useAuth();
   const location = useLocation();
-  const { isOpen, setIsOpen, messages, addMessage, isMinimized, setIsMinimized, profileCompleted, setProfileCompleted } = useChatState();
+  const { isOpen, setIsOpen, messages, addMessage, isMinimized, setIsMinimized, profileCompleted, setProfileCompleted, resetMessages } = useChatState();
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -56,6 +56,7 @@ export default function ChatWidget() {
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const [generationStep, setGenerationStep] = useState<'INITIAL' | 'SAVING_DATA' | 'GENERATING_CURRICULUM' | 'SAVING_CURRICULUM' | 'COMPLETED' | 'ERROR'>('INITIAL');
+  const profileQuestionsStartedRef = useRef(false);
   
   const profileForm = useForm<ProfileQuestionnaireForm>({
     defaultValues: {
@@ -264,7 +265,8 @@ export default function ChatWidget() {
             setIsFullscreen(true);
             
             // プロファイリング質問を一度だけ開始するようにする
-            if (!showQuestionForm) {
+            if (!profileQuestionsStartedRef.current) {
+              profileQuestionsStartedRef.current = true;
               setTimeout(() => {
                 console.log("プロファイル質問を開始します...");
                 startProfileQuestions();
@@ -282,7 +284,7 @@ export default function ChatWidget() {
     if (userNameLoaded) {
       checkUserProfile();
     }
-  }, [user, location.pathname, setIsOpen, setIsMinimized, setProfileCompleted, userNameLoaded, showQuestionForm]);
+  }, [user, location.pathname, setIsOpen, setIsMinimized, setProfileCompleted, userNameLoaded]);
 
   useEffect(() => {
     if (user && location.pathname === '/dashboard' && userNameLoaded && !welcomeMessageSentRef.current) {
@@ -300,42 +302,43 @@ export default function ChatWidget() {
             const timeDiff = now.getTime() - creationTime.getTime();
             const minutesDiff = Math.floor(timeDiff / 1000 / 60);
 
-            // カリキュラム生成から5分以内の場合、フォローアップメッセージを表示（一度だけ）
-            if (minutesDiff <= 5) {
-              welcomeMessageSentRef.current = true; // 一度表示したらフラグを立てる
+            // カリキュラム生成から5分以内の場合のみ、フォローアップメッセージを表示
+            if (minutesDiff <= 5 && !checkAndSetProcessingState()) {
+              welcomeMessageSentRef.current = true;
               setIsOpen(true);
               setIsMinimized(false);
               
+              // ダッシュボードへの遷移メッセージを表示
+              const transitionMessage = userName 
+                ? `${userName}さん、ダッシュボードへようこそ！カリキュラムの生成が完了しました。`
+                : 'ダッシュボードへようこそ！カリキュラムの生成が完了しました。';
+              
+              addMessage({
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: transitionMessage,
+                timestamp: new Date(),
+              });
+
+              // 少し待ってから学習開始のガイダンスを表示
               setTimeout(() => {
-                const welcomeMessage = userName 
-                  ? `${userName}さん、カリキュラムの生成が完了しました！学習を始める前に、気になることがありましたらお気軽にご質問ください。`
-                  : 'カリキュラムの生成が完了しました！学習を始める前に、気になることがありましたらお気軽にご質問ください。';
-                
+                const guidanceMessage = `
+学習を始める前に、以下のポイントを確認しましょう：
+
+1. 各モジュールの進捗は0%からスタートします
+2. モジュールをクリックすると学習を開始できます
+3. 学習中はAIアシスタントがサポートします
+4. 分からないことがあればいつでも質問してください
+
+それでは、学習を始めましょう！`;
+
                 addMessage({
                   id: Date.now().toString(),
                   role: 'assistant',
-                  content: welcomeMessage,
+                  content: guidanceMessage,
                   timestamp: new Date(),
                 });
-
-                setTimeout(() => {
-                  const suggestionMessage = `
-以下のような質問にお答えできます：
-• カリキュラムの進め方について
-• 各モジュールの詳細な内容
-• 学習時間の目安
-• 効果的な学習方法のアドバイス
-
-どのようなことでもお気軽にどうぞ！`;
-
-                  addMessage({
-                    id: Date.now().toString(),
-                    role: 'assistant',
-                    content: suggestionMessage,
-                    timestamp: new Date(),
-                  });
-                }, 1000);
-              }, 500);
+              }, 1000);
             }
           }
         } catch (error) {
@@ -366,6 +369,9 @@ export default function ChatWidget() {
 
     setTimeout(() => {
       console.log("startProfileQuestions内のユーザー名:", userName);
+      
+      // 重複メッセージを防ぐためにメッセージをリセット
+      resetMessages();
       
       let greeting = 'こんにちは！goalwiseへようこそ。より良い学習体験を提供するために、いくつか質問させてください。';
       
@@ -559,21 +565,7 @@ export default function ChatWidget() {
                   
                 console.log('抽出したプロファイルデータ:', extractedProfileData);
                 
-                // プロファイル完了をマーク
-                const { error: profileError } = await supabase
-                  .from('profiles')
-                  .update({ profile_completed: true })
-                  .eq('id', user?.id);
-                  
-                if (profileError) {
-                  console.error('プロファイル完了の設定に失敗しました:', profileError);
-                  throw new Error('プロファイル情報の更新に失敗しました');
-                }
-                
-                console.log('プロファイル完了を設定しました、状態を更新します');
-                setProfileCompleted(true); // 状態更新を追加
-                
-                // カリキュラム生成
+                // カリキュラム生成 - 先にカリキュラムを生成・保存してからプロファイル完了フラグを更新
                 setGenerationStep('GENERATING_CURRICULUM');
                 
                 // コンソールにログを追加して状態を追跡
@@ -644,40 +636,44 @@ export default function ChatWidget() {
                   const { data: confirmData, error: confirmError } = await supabase
                     .from('user_curriculum')
                     .select('id')
-                    .eq('user_id', user?.id)
-                    .single();
+                    .eq('user_id', user?.id);
                     
                   if (confirmError) {
                     console.error('カリキュラム確認エラー:', confirmError);
                     throw new Error('カリキュラムの確認ができませんでした');
                   }
                   
-                  if (!confirmData) {
+                  if (!confirmData || confirmData.length === 0) {
                     throw new Error('カリキュラムの保存に失敗しました（データが見つかりません）');
                   }
+                  
+                  console.log('カリキュラムが正常に保存されました');
+                  
+                  // カリキュラム保存完了後、プロファイル完了フラグを更新
+                  const { error: profileError } = await supabase
+                    .from('profiles')
+                    .update({ profile_completed: true })
+                    .eq('id', user?.id);
+                    
+                  if (profileError) {
+                    console.error('プロファイル完了の設定に失敗しました:', profileError);
+                    throw new Error('プロファイル情報の更新に失敗しました');
+                  }
+                  
+                  console.log('プロファイル完了を設定しました、状態を更新します');
+                  setProfileCompleted(true); // 状態更新を追加
                   
                 } catch (saveError) {
                   console.error('カリキュラムの保存に失敗しました:', saveError);
                   throw new Error('カリキュラムの保存に失敗しました');
                 }
                 
-                console.log('カリキュラムが正常に保存されました');
                 setGenerationStep('COMPLETED');
-                
-                // 処理完了をローカルストレージに保存
-                if (typeof window !== 'undefined' && user?.id) {
-                  localStorage.setItem(`curriculum_completed_${user.id}`, 'true');
-                }
-                
-                addMessage({
-                  id: Date.now().toString(),
-                  role: 'assistant',
-                  content: 'カリキュラムの生成が完了しました！ダッシュボードに移動します。',
-                  timestamp: new Date(),
-                });
                 
                 // 保存完了後、少し待ってからリダイレクト
                 await new Promise(resolve => setTimeout(resolve, 2000));
+                // ダッシュボードに遷移（リセットはChatStateのuseEffectで自動的に行われる）
+                console.log('ダッシュボードに遷移します');
                 navigate('/dashboard');
                 
               } catch (error) {
@@ -902,6 +898,19 @@ export default function ChatWidget() {
     );
   };
 
+  // チャットの状態をリセットする関数
+  const resetChatState = () => {
+    setInput('');
+    setIsLoading(false);
+    setIsTyping(false);
+    welcomeMessageSentRef.current = false;
+  };
+
+  // ページ遷移時にチャットの状態をリセット
+  useEffect(() => {
+    resetChatState();
+  }, [location.pathname]);
+
   if (!isOpen) {
     return (
       <Button
@@ -920,10 +929,10 @@ export default function ChatWidget() {
       : 'fixed bottom-6 right-6 w-80 sm:w-96 h-[500px]';
 
   const chatWindowClass = isFullscreen
-    ? 'bg-background border border-border rounded-lg shadow-lg flex flex-col w-[90%] h-[90%] max-w-[800px]'
+    ? 'bg-background border border-border rounded-lg shadow-lg flex flex-col w-[90%] h-[90%] max-w-[800px] overflow-hidden'
     : isMinimized
-      ? 'w-full h-full flex items-center justify-center bg-background border border-border rounded-full shadow-lg'
-      : 'w-full h-full bg-background border border-border rounded-lg shadow-lg flex flex-col';
+      ? 'w-full h-full flex items-center justify-center bg-background border border-border rounded-full shadow-lg overflow-hidden'
+      : 'w-full h-full bg-background border border-border rounded-lg shadow-lg flex flex-col overflow-hidden';
 
   return (
     <div className={chatContainerClass}>
@@ -938,7 +947,7 @@ export default function ChatWidget() {
           </Button>
         ) : (
           <>
-            <div className="p-3 border-b flex justify-between items-center bg-primary text-primary-foreground">
+            <div className="p-3 border-b flex justify-between items-center bg-primary text-primary-foreground rounded-t-lg">
               <h3 className="font-medium">AIアシスタント</h3>
               <div className="flex items-center space-x-1">
                 {!isFullscreen && (

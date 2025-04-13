@@ -66,6 +66,69 @@ export type Database = {
         }
         Relationships: []
       }
+      learning_progress: {
+        Row: {
+          id: string
+          user_id: string
+          module_id: string
+          session_type: string
+          completion_percentage: number
+          duration_minutes: number
+          completed: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          module_id: string
+          session_type: string
+          completion_percentage: number
+          duration_minutes: number
+          completed: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          module_id?: string
+          session_type?: string
+          completion_percentage?: number
+          duration_minutes?: number
+          completed?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      module_details: {
+        Row: {
+          id: string
+          module_id: string
+          user_id: string
+          detail_data: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          module_id: string
+          user_id: string
+          detail_data: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          module_id?: string
+          user_id?: string
+          detail_data?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -178,3 +241,92 @@ export type CompositeTypes<
   : PublicCompositeTypeNameOrOptions extends keyof PublicSchema["CompositeTypes"]
     ? PublicSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
+
+// モジュール詳細の型定義
+export interface ModuleDetail {
+  title: string;
+  content: string;
+  examples: string[];
+  exercises: {
+    question: string;
+    answer: string;
+    explanation: string;
+  }[];
+  summary: string;
+  keyPoints: string[];
+}
+
+// 進捗状態の型定義
+export interface ProgressState {
+  [key: string]: number;
+}
+
+// 学習セッションの種類
+export type SessionType = 'content' | 'exercise' | 'quiz' | 'review';
+
+// 既存のDatabase型を拡張
+export type Tables = {
+  module_details: {
+    Row: {
+      id: string;
+      module_id: string;
+      user_id: string;
+      detail_data: ModuleDetail;
+      created_at: string;
+      updated_at: string;
+    };
+    Insert: {
+      id?: string;
+      module_id: string;
+      user_id: string;
+      detail_data: ModuleDetail;
+      created_at?: string;
+      updated_at?: string;
+    };
+    Update: {
+      id?: string;
+      module_id?: string;
+      user_id?: string;
+      detail_data?: ModuleDetail;
+      created_at?: string;
+      updated_at?: string;
+    };
+    Relationships: [];
+  };
+  learning_progress: {
+    Row: {
+      id: string;
+      user_id: string;
+      module_id: string;
+      session_type: SessionType;
+      completion_percentage: number;
+      duration_minutes: number;
+      completed: boolean;
+      created_at: string;
+      updated_at: string;
+    };
+    Insert: {
+      id?: string;
+      user_id: string;
+      module_id: string;
+      session_type: SessionType;
+      completion_percentage: number;
+      duration_minutes: number;
+      completed: boolean;
+      created_at?: string;
+      updated_at?: string;
+    };
+    Update: {
+      id?: string;
+      user_id?: string;
+      module_id?: string;
+      session_type?: SessionType;
+      completion_percentage?: number;
+      duration_minutes?: number;
+      completed?: boolean;
+      created_at?: string;
+      updated_at?: string;
+    };
+    Relationships: [];
+  };
+};

@@ -72,15 +72,12 @@ const generateMaterialsFromCurriculum = (curriculum: CurriculumStructure | null)
   
   // モジュールの先頭3つを使用して教材カードを生成
   const materials = curriculum.modules.slice(0, 3).map((module, index) => {
-    // ランダムな進捗状況（実際の実装では、ユーザーの進捗データから取得）
-    const progress = Math.floor(Math.random() * 80);
-    
     return {
       id: module.id,
       title: module.title,
       category: curriculum.skills_covered[0] || "学習",
-      progress: progress,
-      lastAccessed: ["昨日", "3日前", "1週間前"][index] || "最近",
+      progress: 0, // 初期値は0%として、後で学習進捗データから更新
+      lastAccessed: "未開始", // 初期値
       image: [
         "https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?auto=format&fit=crop&q=80",
         "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80",
@@ -122,29 +119,27 @@ const convertCurriculumToPlanData = (curriculum: CurriculumStructure | null): Le
   };
 };
 
-// Mock data for activity chart
-const activityData = [
-  { day: "5/20", minutes: 10 },
-  { day: "5/21", minutes: 25 },
-  { day: "5/22", minutes: 45 },
-  { day: "5/23", minutes: 30 },
-  { day: "5/24", minutes: 60 },
-  { day: "5/25", minutes: 40 },
-  { day: "5/26", minutes: 55 },
-  { day: "5/27", minutes: 75 },
-  { day: "5/28", minutes: 50 },
-  { day: "5/29", minutes: 65 },
-  { day: "5/30", minutes: 90 },
-  { day: "5/31", minutes: 70 },
-  { day: "6/1", minutes: 85 },
-  { day: "6/2", minutes: 50 },
-];
+// Mock data for activity chart - 本来はAPIからのデータを使用
+const getEmptyActivityData = () => {
+  const days: string[] = [];
+  const today = new Date();
+  
+  for (let i = 30; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(today.getDate() - i);
+    days.push(`${date.getMonth() + 1}/${date.getDate()}`);
+  }
+  
+  return days.map(day => ({ day, minutes: 0 }));
+};
 
-// Mock data for progress chart
-const progressData = [
-  { name: "完了", value: 42, percentage: 42, color: "hsl(var(--primary))" },
-  { name: "進行中", value: 28, percentage: 28, color: "hsl(var(--accent))" },
-  { name: "未開始", value: 30, percentage: 30, color: "#e0e0e0" },
+const activityData = getEmptyActivityData();
+
+// 初期の進捗データ
+const initialProgressData = [
+  { name: "完了", value: 0, percentage: 0, color: "hsl(var(--primary))" },
+  { name: "進行中", value: 0, percentage: 0, color: "hsl(var(--accent))" },
+  { name: "未開始", value: 100, percentage: 100, color: "#e0e0e0" },
 ];
 
 const Dashboard = () => {
@@ -162,6 +157,7 @@ const Dashboard = () => {
     streakDays: '0',
     skillPoints: '0'
   });
+  const [progressData, setProgressData] = useState(initialProgressData);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const isFetchingRef = useRef(false);
   const redirectAttemptRef = useRef(0);
@@ -279,7 +275,7 @@ const Dashboard = () => {
           // カリキュラムデータの取得 - Supabaseクライアントのメソッドを使用
           const { data: curriculumData, error: curriculumError } = await supabase
             .from('user_curriculum')
-            .select('*')
+            .select('id, user_id, curriculum_data, created_at, updated_at')
             .eq('user_id', user.id);
             
           if (curriculumError) {
@@ -287,7 +283,7 @@ const Dashboard = () => {
             throw new Error(`APIエラー: ${curriculumError.message}`);
           }
           
-          if (!curriculumData || curriculumData.length === 0 || !curriculumData[0].curriculum_data) {
+          if (!curriculumData || curriculumData.length === 0 || !curriculumData[0]?.curriculum_data) {
             console.log('カリキュラムデータが見つかりません。リトライします...');
             
             if (retryCount < maxRetries - 1) {
@@ -323,6 +319,9 @@ const Dashboard = () => {
           // 最近のモジュールデータを設定
           setMaterials(generateMaterialsFromCurriculum(curriculumStructure));
           
+          // カリキュラムデータ取得後に学習進捗データを取得
+          fetchLearningProgress(curriculumStructure);
+          
           break; // 正常に取得できたらループを終了
         } catch (error) {
           console.error('カリキュラムデータ取得エラー:', error);
@@ -345,6 +344,116 @@ const Dashboard = () => {
       setTimeout(() => {
         sessionStorage.removeItem(sessionKey);
       }, 10000); // 10秒後にフラグをクリア
+    }
+  };
+
+  // 学習進捗データを取得する関数
+  const fetchLearningProgress = async (currentCurriculum?: CurriculumStructure) => {
+    if (!user) return;
+    
+    const targetCurriculum = currentCurriculum || curriculum;
+    if (!targetCurriculum) return;
+    
+    try {
+      // learning_progressテーブルの存在確認 (修正案)
+      const { error: checkTableError } = await supabase
+        .from('learning_progress')
+        .select('id', { head: true, count: 'planned' }) // idカラムのみを1件だけ取得試行
+        .limit(1);
+        
+      // テーブルが存在しない (404 Not Found or similar) か、アクセス権がない (401 Unauthorized) 場合など
+      if (checkTableError) {
+        console.warn('学習進捗テーブルへのアクセスに失敗しました:', checkTableError.message);
+
+        // エラーの種類に応じて処理を分けることも可能
+        // if (checkTableError.code === 'PGRST116') { // Not found
+        //   console.warn('学習進捗テーブルが見つかりません。');
+        // }
+
+        // 初期値（0%進捗、未開始）で表示
+        const materialIds = targetCurriculum.modules.slice(0, 3).map(m => m.id);
+        
+        const updatedMaterials = materialIds.map((moduleId, index) => ({
+          id: moduleId,
+          title: targetCurriculum.modules[index].title,
+          category: targetCurriculum.skills_covered[0] || "学習",
+          progress: 0, // 初期値は0%
+          lastAccessed: "未開始", // 未開始と表示
+          image: [
+            "https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?auto=format&fit=crop&q=80",
+            "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80",
+            "https://images.unsplash.com/photo-1531297484001-80022131f5a1?auto=format&fit=crop&q=80"
+          ][index] || "https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?auto=format&fit=crop&q=80"
+        }));
+        
+        setMaterials(updatedMaterials);
+        setHasStartedLearning(false); // 学習未開始
+        return;
+      }
+      
+      // テーブルが存在し、アクセス可能な場合のみ進捗データを取得
+      const { data: progressData, error } = await supabase
+        .from('learning_progress')
+        .select('*')
+        .eq('user_id', user.id);
+        
+      if (error) {
+        console.error('学習進捗データ取得エラー:', error);
+        return;
+      }
+      
+      // 進捗データを使って教材の進捗状況を更新
+      const materialIds = targetCurriculum.modules.slice(0, 3).map(m => m.id);
+      
+      const updatedMaterials = materialIds.map((moduleId, index) => {
+        const moduleProgress = progressData?.find(p => p.module_id === moduleId);
+        const baseModule = {
+          id: moduleId,
+          title: targetCurriculum.modules[index].title,
+          category: targetCurriculum.skills_covered[0] || "学習",
+          progress: 0,
+          lastAccessed: "未開始",
+          image: [
+            "https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?auto=format&fit=crop&q=80",
+            "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80",
+            "https://images.unsplash.com/photo-1531297484001-80022131f5a1?auto=format&fit=crop&q=80"
+          ][index] || "https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?auto=format&fit=crop&q=80"
+        };
+        
+        if (moduleProgress && moduleProgress.completion_percentage > 0) {
+          return {
+            ...baseModule,
+            progress: Math.round(moduleProgress.completion_percentage || 0),
+            lastAccessed: moduleProgress.created_at 
+              ? new Date(moduleProgress.created_at).toLocaleDateString('ja-JP')
+              : "未開始"
+          };
+        }
+        return baseModule;
+      });
+      
+      setMaterials(updatedMaterials);
+      setHasStartedLearning(progressData && progressData.some(p => p.completed));
+    } catch (err) {
+      console.error('学習進捗データ取得中にエラーが発生しました:', err);
+      // エラー時は初期値で表示
+      const materialIds = targetCurriculum.modules.slice(0, 3).map(m => m.id);
+      
+      const updatedMaterials = materialIds.map((moduleId, index) => ({
+        id: moduleId,
+        title: targetCurriculum.modules[index].title,
+        category: targetCurriculum.skills_covered[0] || "学習",
+        progress: 0,
+        lastAccessed: "未開始",
+        image: [
+          "https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?auto=format&fit=crop&q=80",
+          "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80",
+          "https://images.unsplash.com/photo-1531297484001-80022131f5a1?auto=format&fit=crop&q=80"
+        ][index] || "https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?auto=format&fit=crop&q=80"
+      }));
+      
+      setMaterials(updatedMaterials);
+      setHasStartedLearning(false);
     }
   };
 
@@ -392,30 +501,30 @@ const Dashboard = () => {
   // ユーザー名を取得（本来はAuthContextから取得）
   const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'ユーザー';
   
-  // 統計データの作成
+  // 統計データの作成 - 学習開始前は変化表示なし
   const statsData = [
     { 
       label: "総学習時間", 
       value: `${userStats.totalHours}時間`, 
-      change: hasStartedLearning ? "12%" : null, 
+      change: null, // 学習開始前は変化表示なし
       icon: <Clock className="h-5 w-5" /> 
     },
     { 
       label: "完了した教材", 
       value: userStats.completedMaterials, 
-      change: hasStartedLearning ? "2" : null, 
+      change: null, // 学習開始前は変化表示なし
       icon: <Book className="h-5 w-5" /> 
     },
     { 
       label: "学習継続日数", 
       value: `${userStats.streakDays}日`, 
-      change: hasStartedLearning ? "4" : null, 
+      change: null, // 学習開始前は変化表示なし
       icon: <Calendar className="h-5 w-5" /> 
     },
     { 
       label: "獲得スキルポイント", 
       value: userStats.skillPoints, 
-      change: hasStartedLearning ? "85" : null, 
+      change: null, // 学習開始前は変化表示なし
       icon: <Award className="h-5 w-5" /> 
     },
   ];
@@ -457,12 +566,6 @@ const Dashboard = () => {
                       {stat.icon}
                     </div>
                     <div className="text-2xl font-bold tracking-tight">{stat.value}</div>
-                    {stat.change && (
-                      <Badge className="ml-auto bg-green-100 text-green-800 hover:bg-green-100">
-                        +{stat.change}
-                        <ArrowUpRight className="ml-1 h-3 w-3" />
-                      </Badge>
-                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -643,7 +746,11 @@ const Dashboard = () => {
                       <Badge variant="secondary">{material.category}</Badge>
                       <div className="flex items-center text-sm text-muted-foreground">
                         <Clock className="h-3 w-3 mr-1" />
-                        <span>{material.lastAccessed}</span>
+                        {material.lastAccessed !== "未開始" ? (
+                          <span>開始: {material.lastAccessed}</span>
+                        ) : (
+                          <span>未開始</span>
+                        )}
                       </div>
                     </div>
                     <CardTitle className="text-lg mt-2">{material.title}</CardTitle>
@@ -657,8 +764,8 @@ const Dashboard = () => {
                   </CardContent>
                   <CardFooter>
                     <Button className="w-full button-hover" asChild>
-                            <NavLink to={`/modules/${material.id}`}>
-                              {material.progress > 0 ? "続きから学習する" : "学習を始める"}
+                      <NavLink to={`/modules/${material.id}`}>
+                        {material.progress > 0 ? "続きから学習する" : "学習を始める"}
                       </NavLink>
                     </Button>
                   </CardFooter>

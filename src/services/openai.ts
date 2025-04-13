@@ -185,7 +185,7 @@ export const getOpenAIKey = (): string => {
       variant: 'destructive',
     });
     // APIキーがない場合は空文字列を返すか、エラーをスローするなど、適切な処理を行う
-    return ''; 
+  return '';
   }
   return apiKey;
 };
@@ -496,7 +496,7 @@ ${profileData.challenges ? `- 苦手分野や障壁: ${profileData.challenges}` 
         {
           "id": "一意のユニットID",
           "title": "ユニットのタイトル",
-          "type": "ユニットタイプ（'lesson', 'exercise', 'quiz'のいずれか）",
+          "type": "ユニットタイプ（'lesson', 'exercise', 'quiz', 'project'のいずれか）",
           "content_id": "コンテンツを参照するためのID",
           "completed": false
         },
@@ -556,7 +556,7 @@ CurriculumStructure形式:
         {
           "id": "unit-1-1",
           "title": "ユニット1のタイトル",
-          "type": "理論学習 | 演習 | クイズ | プロジェクト",
+          "type": "ユニットタイプ（'lesson', 'exercise', 'quiz', 'project'のいずれか）",
           "content_summary": "ユニットの内容概要"
         }
       ]
@@ -582,7 +582,7 @@ CurriculumStructure形式:
         'Authorization': `Bearer ${getOpenAIKey()}`
       },
       body: JSON.stringify({
-        model: 'gpt-3.5-turbo-1106',
+        model: 'gpt-4o',
         messages: [
           {
             role: 'system',
@@ -804,7 +804,7 @@ const generateFallbackCurriculum = (profileData: any): CurriculumStructure => {
             {
               id: "unit-1-1",
               title: "Dartの基本文法",
-              type: "理論学習",
+              type: "lesson" as UnitType,
               content_summary: "変数、制御構造、関数などDartの基本を学びます。"
             }
           ]
@@ -817,7 +817,7 @@ const generateFallbackCurriculum = (profileData: any): CurriculumStructure => {
             {
               id: "unit-2-1",
               title: "Flutterの環境構築",
-              type: "演習",
+              type: "exercise" as UnitType,
               content_summary: "開発環境のセットアップと最初のアプリ作成。"
             }
           ]
@@ -841,7 +841,7 @@ const generateFallbackCurriculum = (profileData: any): CurriculumStructure => {
             {
               id: "unit-1-1",
               title: "HTMLタグの基礎",
-              type: "理論学習",
+              type: "lesson" as UnitType,
               content_summary: "HTMLの基本的なタグと要素について学習します。"
             }
           ]
@@ -865,7 +865,7 @@ const generateFallbackCurriculum = (profileData: any): CurriculumStructure => {
             {
               id: "unit-1-1",
               title: "プログラミングの基礎概念",
-              type: "理論学習",
+              type: "lesson" as UnitType,
               content_summary: "変数、データ型、制御構造などの基本を学びます。"
             }
           ]
@@ -875,6 +875,51 @@ const generateFallbackCurriculum = (profileData: any): CurriculumStructure => {
     };
   }
 };
+
+// モジュール詳細情報を生成するためのシステムプロンプト
+const SYSTEM_PROMPT_MODULE_DETAIL = `
+あなたは経験豊富な教材開発者です。与えられたモジュール情報に基づいて、学習者にとって魅力的で理解しやすい詳細な教材コンテンツを作成してください。
+
+教材コンテンツは、以下の要素を含む必要があります:
+1.  **概要説明(content)**: モジュールの主要な概念やトピックを詳細に解説します。コード例や図解も適宜含めてください。
+2.  **具体例(examples)**: 理解を助けるための具体的なコード例やシナリオを複数提示してください。
+3.  **要約(summary)**: モジュールの重要なポイントを簡潔にまとめてください。
+4.  **キーポイント(keyPoints)**: 学習者が記憶すべき重要な用語や概念をリストアップしてください。
+5.  **練習問題(questions)**: 理解度を確認するための練習問題をいくつか作成してください。ヒントも添えてください。
+6.  **関連リソース(resources)**: さらに学習を深めるための高品質な外部リソース（ドキュメント、チュートリアル、記事など）を複数紹介してください。URL、タイトル、簡単な説明を含めてください。
+
+レスポンスは必ず以下のJSON形式に従ってください:
+{
+  "title": "モジュールのタイトル",
+  "description": "モジュールの詳細な説明",
+  "learningObjectives": ["学習目標1", "学習目標2"],
+  "prerequisites": ["前提知識1", "前提知識2"],
+  "estimatedDuration": "学習時間の目安 (例: '2時間')",
+  "difficulty": "難易度 ('beginner', 'intermediate', 'advanced')",
+  "category": "カテゴリ",
+  "content": [
+    {
+      "id": "section-1",
+      "title": "セクション1のタイトル",
+      "content": "セクション1の本文 (HTML形式可)",
+      "examples": [
+        {"title": "例1", "content": "例1の内容 (コードブロック等)"}
+      ],
+      "summary": "セクション1の要約",
+      "keyPoints": ["キーポイント1", "キーポイント2"],
+      "questions": [
+        {"question": "練習問題1", "hint": "ヒント1"}
+      ],
+      "resources": [
+        {"title": "リソース1", "url": "URL", "description": "説明"}
+      ]
+    }
+    // ... 他のセクション ...
+  ]
+}
+
+マークダウンや説明文は含めず、JSONオブジェクトのみを返してください。
+`;
 
 // モジュール詳細情報を生成するための関数
 export const generateModuleDetail = async (
@@ -898,14 +943,14 @@ export const generateModuleDetail = async (
   };
   
   // 開始を通知
-  updateProgress("モジュール詳細の生成を準備中...", 5, 120);
+  updateProgress("モジュール詳細の生成を準備中...", 5, 120); // 120秒目安
 
   while (retries <= maxRetries) {
     try {
-      updateProgress("AIエンジンに接続中...", 10, 120);
+      updateProgress("AIエンジンに接続中...", 10, 115);
       
       // OpenAI APIのパラメータを設定
-      const params: ChatCompletionOptions = {
+      const params = {
         model: "gpt-4o",
         messages: [
           { role: "system", content: SYSTEM_PROMPT_MODULE_DETAIL },
@@ -914,29 +959,36 @@ export const generateModuleDetail = async (
             content: JSON.stringify({
               moduleTitle: curriculumModule.title,
               moduleDescription: curriculumModule.description,
-              learningGoals: curriculumModule.learningGoals || [],
+              learningGoals: curriculumModule.learning_objectives || [],
               moduleId: curriculumModule.id,
               // 必要に応じて追加のメタデータを含める
               difficulty: curriculumModule.difficulty || "intermediate",
-              requiredTimeMinutes: curriculumModule.requiredTimeMinutes || 60,
-              targetAudience: curriculumModule.targetAudience || "一般"
+              // estimatedDuration: curriculumModule.estimated_duration, // 必要なら追加
+              // skills_covered: curriculumModule.skills_covered // 必要なら追加
             })
           }
         ],
-        temperature: 0.7,
-        max_tokens: 4000,
-        presence_penalty: 0,
-        frequency_penalty: 0,
+        temperature: 0.6, // 創造性と具体性のバランス
+        max_tokens: 4000, // 長いコンテンツに対応
+        presence_penalty: 0.1,
+        frequency_penalty: 0.1,
         response_format: { type: "json_object" }
       };
       
-      updateProgress("モジュール内容を生成中...", 25, 120);
+      updateProgress("モジュール内容を生成中...", 25, 90);
       
       // APIリクエストの開始時間を記録
       const startTime = Date.now();
       
       // OpenAI APIを呼び出し
-      const result = await fetchChatCompletion(params);
+      const result = await fetchChatCompletion(params.messages, {
+        model: params.model,
+        temperature: params.temperature,
+        maxTokens: params.max_tokens,
+        responseFormat: params.response_format,
+        maxRetries: 0, // fetchChatCompletion側でリトライするため、ここではリトライしない
+        timeout: 120000 // 2分のタイムアウト設定
+      });
       
       // 処理にかかった時間を計算
       const elapsedTime = (Date.now() - startTime) / 1000;
@@ -956,147 +1008,23 @@ export const generateModuleDetail = async (
           
           updateProgress("コンテンツの最終調整中...", 90, 10);
           
-          // IDを追加
-          const moduleDetail = {
+          // IDと生成日時を追加
+          const moduleDetail: ModuleDetail = {
             ...parsed,
-            id: curriculumModule.id || generate_id(),
-            generatedAt: new Date().toISOString()
+            id: curriculumModule.id || `gen_${Date.now()}`,
+            // 他に必要なデフォルト値や変換があればここで行う
+            // generatedAt: new Date().toISOString() // 必要なら追加
           };
           
-          // 検証
-          if (validateModuleDetail(moduleDetail)) {
-            updateProgress("モジュール詳細の生成が完了しました", 100, 0);
-            return moduleDetail;
-          } else {
-            console.error('モジュール詳細の検証に失敗しました:', moduleDetail);
-            throw new Error('モジュール詳細の検証に失敗しました');
-          }
-        } catch (parseError) {
-          console.error('APIレスポンスのJSONパースに失敗しました:', parseError);
-          throw new Error('APIレスポンスのJSONパースに失敗しました');
-        }
-      } else {
-        console.error('APIレスポンスが空または不正な形式です');
-        throw new Error('APIレスポンスが空または不正な形式です');
-      }
-  } catch (error) {
-      retries++;
-      console.error(`モジュール詳細の生成エラー (リトライ ${retries}/${maxRetries}):`, error);
-      
-      // 最大リトライ回数に達した場合
-      if (retries > maxRetries) {
-        updateProgress("モジュール詳細の生成に失敗しました", 100, 0);
-    throw error;
-  }
-      
-      // リトライの前に遅延
-      updateProgress(`エラーが発生しました。リトライ中 (${retries}/${maxRetries})...`, 
-        15 + (retries * 5), retryDelay / 1000);
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
-      
-      // リトライごとに遅延を増加
-      retryDelay = retryDelay * 1.5;
-    }
-  }
-  
-  // ここには到達しないはずだが、TypeScriptの型チェックを満たすために追加
-  throw new Error('モジュール詳細の生成に失敗しました');
-};
+          // TODO: より詳細な検証ロジック (例: 各セクションの内容確認など)
+          
+          updateProgress("モジュール詳細の生成が完了しました", 100, 0);
+          console.log("生成されたモジュール詳細:", moduleDetail);
+          return moduleDetail;
 
-// モジュール詳細取得の共通処理
-export const generateLearningQuestions = async (
-  moduleDetail: ModuleDetail,
-  type: string = 'practice',
-  count: number = 5,
-  difficulty: 'beginner' | 'intermediate' | 'advanced' = 'intermediate',
-  options: {
-    maxRetries?: number;
-    retryDelay?: number;
-    onProgress?: (status: string, progress: number, estimatedTime?: number) => void;
-  } = {}
-): Promise<LearningQuestion[]> => {
-  const { maxRetries = 2 } = options;
-  let { retryDelay = 1000 } = options;
-  const { onProgress } = options;
-  let retries = 0;
-  
-  // 進捗状況を報告
-  const updateProgress = (status: string, progress: number, estimatedTime?: number) => {
-    if (onProgress) {
-      onProgress(status, progress, estimatedTime);
-    }
-  };
-  
-  updateProgress("学習問題の生成を準備中...", 5, 60);
-  
-  // 質問生成のためのプロンプトを作成
-  const prompt = PROMPT_GENERATE_QUESTIONS
-    .replace('{{MODULE_TITLE}}', moduleDetail.title)
-    .replace('{{MODULE_DESCRIPTION}}', moduleDetail.description)
-    .replace('{{MODULE_CONTENT}}', moduleDetail.content.map(section => 
-      `${section.title}:\n${section.content}`
-    ).join('\n\n'))
-    .replace('{{QUESTION_TYPE}}', type)
-    .replace('{{QUESTION_COUNT}}', count.toString())
-    .replace('{{DIFFICULTY}}', difficulty);
-  
-  while (retries <= maxRetries) {
-    try {
-      updateProgress("AIエンジンに接続中...", 15, 60);
-      
-      // OpenAI APIのパラメータを設定
-      const params: ChatCompletionOptions = {
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT_QUESTIONS },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 4000,
-        presence_penalty: 0.2,
-        frequency_penalty: 0.5,
-        response_format: { type: "json_object" }
-      };
-      
-      updateProgress("問題を生成中...", 30, 60);
-      
-      // APIリクエストの開始時間を記録
-      const startTime = Date.now();
-      
-      // OpenAI APIを呼び出し
-      const result = await fetchChatCompletion(params);
-      
-      // 処理にかかった時間を計算
-      const elapsedTime = (Date.now() - startTime) / 1000;
-      
-      updateProgress("生成された問題を処理中...", 70, Math.max(15, elapsedTime * 0.2));
-      
-      // APIレスポンスをパース
-      if (result && typeof result === 'string') {
-        try {
-          const parsed = JSON.parse(result);
-          
-          // 基本的な検証を行う
-          if (!parsed.questions || !Array.isArray(parsed.questions)) {
-            console.error('質問生成のレスポンスにデータが不足しています:', parsed);
-            throw new Error('質問生成のレスポンスにデータが不足しています');
-          }
-          
-          updateProgress("問題の最終調整中...", 90, 10);
-          
-          // 質問にIDを追加
-          const questions: LearningQuestion[] = parsed.questions.map((q: any) => ({
-            ...q,
-            id: generate_id(),
-            moduleId: moduleDetail.id,
-            type,
-            difficulty
-          }));
-          
-          updateProgress("問題の生成が完了しました", 100, 0);
-          return questions;
         } catch (parseError) {
           console.error('APIレスポンスのJSONパースに失敗しました:', parseError);
+          console.error('受信したコンテンツ:', result);
           throw new Error('APIレスポンスのJSONパースに失敗しました');
         }
       } else {
@@ -1104,27 +1032,28 @@ export const generateLearningQuestions = async (
         throw new Error('APIレスポンスが空または不正な形式です');
       }
     } catch (error) {
-      retries++;
-      console.error(`質問生成エラー (リトライ ${retries}/${maxRetries}):`, error);
-      
-      // 最大リトライ回数に達した場合
-      if (retries > maxRetries) {
-        updateProgress("問題の生成に失敗しました", 100, 0);
-        throw error;
-      }
-      
-      // リトライの前に遅延
-      updateProgress(`エラーが発生しました。リトライ中 (${retries}/${maxRetries})...`, 
-        20 + (retries * 10), retryDelay / 1000);
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
-      
-      // リトライごとに遅延を増加
-      retryDelay = retryDelay * 1.5;
+        retries++;
+        console.error(`モジュール詳細の生成エラー (リトライ ${retries}/${maxRetries}):`, error);
+        
+        // 最大リトライ回数に達した場合
+        if (retries > maxRetries) {
+          updateProgress("モジュール詳細の生成に失敗しました", 100, 0);
+          throw error;
+        }
+        
+        // リトライの前に遅延
+        const delay = retryDelay * Math.pow(1.5, retries); // 指数バックオフ
+        updateProgress(`エラーが発生しました。リトライ中 (${retries}/${maxRetries})...`, 
+          15 + (retries * 10), delay / 1000);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        // リトライごとに遅延を増加
+        retryDelay = delay;
     }
   }
   
   // ここには到達しないはずだが、TypeScriptの型チェックを満たすために追加
-  throw new Error('質問の生成に失敗しました');
+  throw new Error('モジュール詳細の生成に失敗しました');
 };
 
 // ユーザーの回答を評価する関数
@@ -1746,6 +1675,7 @@ export const fetchChatCompletion = async (
     responseFormat?: { type: string };
     maxRetries?: number;
     retryDelay?: number;
+    timeout?: number; // タイムアウト時間（ミリ秒）
   } = {}
 ): Promise<string> => {
   const apiKey = getOpenAIKey();
@@ -1756,6 +1686,7 @@ export const fetchChatCompletion = async (
 
   const maxRetries = options.maxRetries ?? 3;
   const retryDelay = options.retryDelay ?? 1000;
+  const timeout = options.timeout ?? 120000; // デフォルトタイムアウト: 2分
 
   let lastError: Error | null = null;
   let retries = 0;
@@ -1767,40 +1698,70 @@ export const fetchChatCompletion = async (
         console.log(`OpenAI API リクエストのリトライ ${retries}/${maxRetries}...`);
       }
 
-      // OpenAI APIリクエスト
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
+      // タイムアウト処理付きのfetchリクエスト
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      try {
+        console.log('OpenAI APIリクエスト送信開始:', {
           model: options.model || 'gpt-4o',
-          messages: messages,
-          max_tokens: options.maxTokens || 1000,
-          temperature: options.temperature || 0.7,
-          response_format: options.responseFormat,
-        })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('OpenAI API Error:', errorData);
+          messageCount: messages.length,
+          timeout: `${timeout/1000}秒`
+        });
         
-        // エラーコードに基づいて適切なエラーを生成
-        if (response.status === 401) {
-          throw new AuthenticationError('APIキーが無効か認証に失敗しました');
-        } else if (response.status === 429) {
-          throw new OpenAIError('APIレート制限を超えました。しばらく待ってから再試行してください', 'rate_limit_exceeded');
-        } else if (response.status >= 500) {
-          throw new NetworkError(`OpenAI APIサーバーエラー: ${errorData.error?.message || '不明なエラー'}`);
-        } else {
-          throw new OpenAIError(`OpenAI APIエラー: ${errorData.error?.message || 'レスポンスの取得に失敗しました'}`, errorData.error?.code);
+        // OpenAI APIリクエスト
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: options.model || 'gpt-4o',
+            messages: messages,
+            max_tokens: options.maxTokens || 1000,
+            temperature: options.temperature || 0.7,
+            response_format: options.responseFormat,
+          }),
+          signal: controller.signal
+        });
+        
+        // タイムアウトタイマーをクリア
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('OpenAI API Error:', errorData);
+          
+          // エラーコードに基づいて適切なエラーを生成
+          if (response.status === 401) {
+            throw new AuthenticationError('APIキーが無効か認証に失敗しました');
+          } else if (response.status === 429) {
+            throw new OpenAIError('APIレート制限を超えました。しばらく待ってから再試行してください', 'rate_limit_exceeded');
+          } else if (response.status >= 500) {
+            throw new NetworkError(`OpenAI APIサーバーエラー: ${errorData.error?.message || '不明なエラー'}`);
+          } else {
+            throw new OpenAIError(`OpenAI APIエラー: ${errorData.error?.message || 'レスポンスの取得に失敗しました'}`, errorData.error?.code);
+          }
         }
+        
+        const result = await response.json();
+        console.log('OpenAI APIリクエスト成功:', {
+          model: options.model || 'gpt-4o',
+          tokens: result.usage?.total_tokens || '不明',
+          responseLength: result.choices?.[0]?.message?.content?.length || 0
+        });
+        
+        return result.choices[0]?.message?.content || '';
+      } catch (fetchError) {
+        // AbortControllerによるタイムアウトの場合
+        if (fetchError.name === 'AbortError') {
+          throw new Error(`OpenAI APIリクエストがタイムアウトしました (${timeout/1000}秒)`);
+        }
+        throw fetchError;
+      } finally {
+        clearTimeout(timeoutId);
       }
-      
-      const result = await response.json();
-      return result.choices[0]?.message?.content || '';
     } catch (error) {
       console.error(`Error in fetchChatCompletion (attempt ${retries + 1}/${maxRetries + 1}):`, error);
       
@@ -1810,7 +1771,9 @@ export const fetchChatCompletion = async (
       const shouldRetry = 
         (error instanceof NetworkError) || 
         (error instanceof OpenAIError && error.code === 'rate_limit_exceeded') ||
-        (error instanceof Error && error.message.includes('fetch failed'));
+        (error instanceof Error && error.message.includes('fetch failed')) ||
+        // タイムアウトエラーもリトライ対象に含める
+        (error instanceof Error && error.message.includes('タイムアウト'));
 
       // 最大リトライ回数に達した、またはリトライできないエラーの場合
       if (retries >= maxRetries || !shouldRetry) {
@@ -1861,3 +1824,177 @@ const generateCodeExplanation = async (code: string, level: string = 'intermedia
 
 // unitのtype型を定義
 export type UnitType = "lesson" | "exercise" | "quiz" | "project";
+
+// 質問生成のためのシステムプロンプト
+const SYSTEM_PROMPT_QUESTIONS = `
+あなたは教育的な質問を作成する専門家です。提供された教材内容に基づいて、学習者の理解度を確認するための効果的な質問を作成してください。
+
+質問は以下の要素を含む必要があります:
+- 質問文 (question)
+- 期待される回答 (expectedAnswer)
+- ヒント (hint)
+- カテゴリ (category)
+- タグ (tags)
+
+レスポンスは以下のJSON形式に従ってください:
+
+{
+  "questions": [
+    {
+      "question": "質問文",
+      "expectedAnswer": "期待される回答または解説",
+      "hint": "回答を導くためのヒント",
+      "category": "質問のカテゴリ (例: 基本概念, 実装方法, ベストプラクティス)",
+      "tags": ["関連タグ1", "関連タグ2"]
+    }
+    // ... 他の質問 ...
+  ]
+}
+
+マークダウンや説明文は含めず、JSONオブジェクトのみを返してください。
+`;
+
+// 質問生成のためのユーザープロンプトテンプレート
+const PROMPT_GENERATE_QUESTIONS = `
+以下の教材内容に基づいて、{{QUESTION_TYPE}}タイプの質問を{{QUESTION_COUNT}}個、難易度{{DIFFICULTY}}で作成してください。
+
+教材タイトル: {{MODULE_TITLE}}
+教材説明: {{MODULE_DESCRIPTION}}
+
+教材内容:
+{{MODULE_CONTENT}}
+
+指定されたJSON形式で質問リストを返してください。
+`;
+
+// モジュール詳細取得の共通処理
+export const generateLearningQuestions = async (
+  moduleDetail: ModuleDetail,
+  type: string = 'practice',
+  count: number = 5,
+  difficulty: 'beginner' | 'intermediate' | 'advanced' = 'intermediate',
+  options: {
+    maxRetries?: number;
+    retryDelay?: number;
+    onProgress?: (status: string, progress: number, estimatedTime?: number) => void;
+  } = {}
+): Promise<LearningQuestion[]> => {
+  const { maxRetries = 2 } = options;
+  let { retryDelay = 1000 } = options;
+  const { onProgress } = options;
+  let retries = 0;
+  
+  // 進捗状況を報告
+  const updateProgress = (status: string, progress: number, estimatedTime?: number) => {
+    if (onProgress) {
+      onProgress(status, progress, estimatedTime);
+    }
+  };
+  
+  updateProgress("学習問題の生成を準備中...", 5, 60);
+  
+  // 質問生成のためのプロンプトを作成
+  const prompt = PROMPT_GENERATE_QUESTIONS
+    .replace('{{MODULE_TITLE}}', moduleDetail.title)
+    .replace('{{MODULE_DESCRIPTION}}', moduleDetail.description)
+    .replace('{{MODULE_CONTENT}}', moduleDetail.content.map(section => 
+      `${section.title}:\n${section.content}`
+    ).join('\n\n'))
+    .replace('{{QUESTION_TYPE}}', type)
+    .replace('{{QUESTION_COUNT}}', count.toString())
+    .replace('{{DIFFICULTY}}', difficulty);
+  
+  while (retries <= maxRetries) {
+    try {
+      updateProgress("AIエンジンに接続中...", 15, 60);
+      
+      // OpenAI APIのパラメータを設定
+      const params = {
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT_QUESTIONS },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 4000,
+        presence_penalty: 0.2,
+        frequency_penalty: 0.5,
+        response_format: { type: "json_object" }
+      };
+      
+      updateProgress("問題を生成中...", 30, 60);
+      
+      // APIリクエストの開始時間を記録
+      const startTime = Date.now();
+      
+      // OpenAI APIを呼び出し
+      const result = await fetchChatCompletion(params.messages, {
+        model: params.model,
+        temperature: params.temperature,
+        maxTokens: params.max_tokens,
+        responseFormat: params.response_format,
+        maxRetries: 0, // fetchChatCompletion側でリトライ
+        timeout: 120000 // 2分のタイムアウト設定
+      });
+      
+      // 処理にかかった時間を計算
+      const elapsedTime = (Date.now() - startTime) / 1000;
+      
+      updateProgress("生成された問題を処理中...", 70, Math.max(15, elapsedTime * 0.2));
+      
+      // APIレスポンスをパース
+      if (result && typeof result === 'string') {
+        try {
+          const parsed = JSON.parse(result);
+          
+          // 基本的な検証を行う
+          if (!parsed.questions || !Array.isArray(parsed.questions)) {
+            console.error('質問生成のレスポンスにデータが不足しています:', parsed);
+            throw new Error('質問生成のレスポンスにデータが不足しています');
+          }
+          
+          updateProgress("問題の最終調整中...", 90, 10);
+          
+          // 質問にIDを追加
+          const questions: LearningQuestion[] = parsed.questions.map((q: any, index: number) => ({
+            ...q,
+            id: `${moduleDetail.id}-q${index + 1}`,
+            // moduleId: moduleDetail.id, // 不要なら削除
+            type,
+            difficulty
+          }));
+          
+          updateProgress("問題の生成が完了しました", 100, 0);
+          return questions;
+        } catch (parseError) {
+          console.error('APIレスポンスのJSONパースに失敗しました:', parseError);
+          throw new Error('APIレスポンスのJSONパースに失敗しました');
+        }
+      } else {
+        console.error('APIレスポンスが空または不正な形式です');
+        throw new Error('APIレスポンスが空または不正な形式です');
+      }
+    } catch (error) {
+      retries++;
+      console.error(`質問生成エラー (リトライ ${retries}/${maxRetries}):`, error);
+      
+      // 最大リトライ回数に達した場合
+      if (retries > maxRetries) {
+        updateProgress("問題の生成に失敗しました", 100, 0);
+        throw error;
+      }
+      
+      // リトライの前に遅延
+      const delay = retryDelay * Math.pow(1.5, retries);
+      updateProgress(`エラーが発生しました。リトライ中 (${retries}/${maxRetries})...`, 
+        20 + (retries * 10), delay / 1000);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // リトライごとに遅延を増加
+      retryDelay = delay;
+    }
+  }
+  
+  // ここには到達しないはずだが、TypeScriptの型チェックを満たすために追加
+  throw new Error('質問の生成に失敗しました');
+};

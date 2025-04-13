@@ -9,6 +9,18 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Check, X, AlertCircle, BookOpen, Award, BarChart3 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+
+interface CurriculumModule {
+  id: string;
+  title: string;
+  content: string;
+}
+
+interface CurriculumData {
+  modules: CurriculumModule[];
+}
 
 // 進捗ダッシュボードコンポーネント
 const ProgressDashboard: React.FC = () => {
@@ -16,42 +28,54 @@ const ProgressDashboard: React.FC = () => {
   const [activitySummary, setActivitySummary] = useState<ActivitySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [moduleCount, setModuleCount] = useState(0);
+  const [curriculumData, setCurriculumData] = useState<CurriculumData | null>(null);
   
   useEffect(() => {
-    async function loadProgressData() {
+    const fetchData = async () => {
       try {
         setLoading(true);
-        setError(null);
-        
-        // ユーザーIDを取得
-        const { data: sessionData } = await supabase.auth.getSession();
-        const userId = sessionData?.session?.user?.id;
-        
-        if (!userId) {
-          setError('ユーザー情報が取得できませんでした。ログインしてください。');
-          setLoading(false);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setError('ユーザー情報が取得できませんでした');
           return;
         }
-        
-        // 進捗データとアクティビティサマリーを取得
-        const progress = await getAllProgress(userId);
-        const activity = await calculateActivitySummary(userId);
-        
+
+        // カリキュラムデータの取得
+        const { data: curriculumResult } = await supabase
+          .from('user_curriculum')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+
+        if (curriculumResult?.curriculum_data) {
+          const currData = JSON.parse(JSON.stringify(curriculumResult.curriculum_data)) as CurriculumData;
+          setCurriculumData(currData);
+          setModuleCount(currData.modules.length);
+        }
+
+        // 進捗データの取得
+        const progress = await getAllProgress(user.id);
         setProgressData(progress);
-        setActivitySummary(activity);
-      } catch (error) {
-        console.error('進捗データ取得エラー:', error);
-        setError('進捗データの取得中にエラーが発生しました。');
-      } finally {
+
+        // アクティビティサマリーの計算
+        const summary = await calculateActivitySummary(user.id);
+        setActivitySummary(summary);
+
+        setLoading(false);
+      } catch (err) {
+        console.error('データ取得エラー:', err);
+        setError('データの取得中にエラーが発生しました');
         setLoading(false);
       }
-    }
-    
-    loadProgressData();
+    };
+
+    fetchData();
   }, []);
   
   // 進捗の概要を計算
   const progressSummary = calculateProgressSummary(progressData);
+  const startedModulesCount = progressData.filter(p => p.startedAt).length;
   
   // モジュールごとにグループ化
   const moduleProgressMap = progressData.reduce((acc, item) => {
@@ -99,16 +123,108 @@ const ProgressDashboard: React.FC = () => {
     );
   }
   
-  // データがない場合の表示
-  if (progressData.length === 0) {
+  // データがない場合の表示を改善
+  if (!loading && (!curriculumData || !curriculumData.modules)) {
     return (
       <Alert>
-        <BookOpen className="h-4 w-4" />
-        <AlertTitle>学習データがありません</AlertTitle>
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>カリキュラムが設定されていません</AlertTitle>
         <AlertDescription>
-          まだ学習を開始していないようです。モジュールを選択して学習を始めてみましょう。
+          まずはAIチャットでカリキュラムを作成してください。
         </AlertDescription>
       </Alert>
+    );
+  }
+  
+  if (!loading && curriculumData?.modules) {
+    return (
+      <div className="space-y-8">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {curriculumData.modules.map((module: CurriculumModule, index: number) => {
+            const progress = progressData.find(p => p.moduleId === module.id);
+            const hasStarted = progress?.startedAt;
+            const completionPercentage = hasStarted ? Math.round(progress?.completion_percentage || 0) : 0;
+            
+            return (
+              <Card key={index} className="relative overflow-hidden">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    {module.title || `モジュール ${index + 1}`}
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground">
+                    {hasStarted 
+                      ? `開始日: ${new Date(progress.startedAt).toLocaleDateString('ja-JP')}`
+                      : '未開始'}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {completionPercentage}%
+                  </div>
+                  <Progress 
+                    value={completionPercentage}
+                    className="h-2 mt-2" 
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {hasStarted ? '進行中' : '学習を開始していません'}
+                  </p>
+                  <Button 
+                    variant={hasStarted ? "outline" : "default"}
+                    className={cn(
+                      "w-full mt-4",
+                      hasStarted ? "hover:bg-primary/90" : "hover:bg-primary/90"
+                    )}
+                    onClick={() => {/* ここに学習開始のロジックを追加 */}}
+                  >
+                    {hasStarted ? '続きから学習する' : '学習を開始する'}
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {activitySummary && (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">総学習時間</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{Math.round(activitySummary.totalTimeSpent / 60)}時間</div>
+                <p className="text-xs text-muted-foreground">学習を継続しましょう</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">学習連続日数</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{activitySummary.studyStreak}日</div>
+                <p className="text-xs text-muted-foreground">継続は力なり！</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">平均スコア</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{Math.round(activitySummary.averageScore)}点</div>
+                <p className="text-xs text-muted-foreground">理解度を確認しましょう</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">改善率</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{Math.round(activitySummary.improvementRate)}%</div>
+                <p className="text-xs text-muted-foreground">着実に成長しています</p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
     );
   }
   
@@ -119,12 +235,14 @@ const ProgressDashboard: React.FC = () => {
         <div className="flex items-center space-x-2 mt-2 md:mt-0">
           <Badge variant="secondary" className="px-3 py-1">
             <BookOpen className="h-3.5 w-3.5 mr-1" />
-            学習者レベル: 中級者
+            開始済みモジュール: {startedModulesCount}/{moduleCount}
           </Badge>
-          <Badge variant="outline" className="px-3 py-1">
-            <Award className="h-3.5 w-3.5 mr-1" />
-            累計ポイント: {progressSummary.totalCorrectAnswers * 10}
-          </Badge>
+          {progressSummary.totalCorrectAnswers > 0 && (
+            <Badge variant="outline" className="px-3 py-1">
+              <Award className="h-3.5 w-3.5 mr-1" />
+              累計ポイント: {progressSummary.totalCorrectAnswers * 10}
+            </Badge>
+          )}
         </div>
       </div>
       
@@ -136,7 +254,7 @@ const ProgressDashboard: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {progressSummary.completedModules}/{progressSummary.totalModules}
+              {progressSummary.completedModules}/{moduleCount}
             </div>
             <Progress
               value={progressSummary.completionRate}
@@ -148,39 +266,42 @@ const ProgressDashboard: React.FC = () => {
           </CardContent>
         </Card>
         
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">回答正答率</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {progressSummary.overallAccuracy.toFixed(1)}%
-            </div>
-            <Progress
-              value={progressSummary.overallAccuracy}
-              className="h-2 mt-2"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              全{progressSummary.totalQuestionsAnswered}問中{progressSummary.totalCorrectAnswers}問正解
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">合計学習回数</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {progressData.length}回
-            </div>
-            <div className="flex space-x-2 mt-2">
-              <Badge variant="outline">練習: {progressData.filter(p => p.sessionType === 'practice').length}回</Badge>
-              <Badge variant="outline">クイズ: {progressData.filter(p => p.sessionType === 'quiz').length}回</Badge>
-              <Badge variant="outline">復習: {progressData.filter(p => p.sessionType === 'review').length}回</Badge>
-            </div>
-          </CardContent>
-        </Card>
+        {startedModulesCount > 0 && (
+          <>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">回答正答率</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {progressSummary.overallAccuracy.toFixed(1)}%
+                </div>
+                <Progress
+                  value={progressSummary.overallAccuracy}
+                  className="h-2 mt-2"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  全{progressSummary.totalQuestionsAnswered}問中{progressSummary.totalCorrectAnswers}問正解
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">学習セッション</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {startedModulesCount}回
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <Badge variant="outline">開始済み: {startedModulesCount}モジュール</Badge>
+                  <Badge variant="outline">完了: {progressSummary.completedModules}モジュール</Badge>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
       
       {/* タブ付きのモジュール詳細 */}
@@ -264,7 +385,7 @@ const ProgressDashboard: React.FC = () => {
                                     ? ((session.correctAnswers / session.questionsAnswered) * 100).toFixed(1) 
                                     : 0}%
                                 </span>
-                                <Badge variant={session.completed ? "success" : "outline"}>
+                                <Badge variant={session.completed ? "secondary" : "outline"}>
                                   {session.completed ? "完了" : "進行中"}
                                 </Badge>
                               </div>
@@ -317,7 +438,7 @@ const ProgressDashboard: React.FC = () => {
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-2">
-                              <Badge variant={answer.isCorrect ? "success" : "destructive"}>
+                              <Badge variant={answer.isCorrect ? "secondary" : "destructive"}>
                                 {answer.isCorrect 
                                   ? <Check className="h-3 w-3 mr-1" /> 
                                   : <X className="h-3 w-3 mr-1" />

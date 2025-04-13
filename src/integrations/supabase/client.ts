@@ -14,7 +14,7 @@ export const supabase = createClient<Database>(
   {
     global: {
       headers: {
-        'Accept': '*/*',
+        'Accept': 'application/json, text/*, */*',
         'Content-Type': 'application/json',
         'apikey': SUPABASE_PUBLISHABLE_KEY,
         'X-Client-Info': 'supabase-js/2.0.0',
@@ -36,6 +36,12 @@ export const supabase = createClient<Database>(
           clearTimeout(timeoutId);
           if (!response.ok) {
             console.error(`Supabase response error: ${response.status} ${response.statusText}`);
+            // レスポンスボディをログに出力して問題を診断
+            response.clone().text().then(text => {
+              console.error('Error response body:', text);
+            }).catch(e => {
+              console.error('Failed to log response body:', e);
+            });
           }
           return response;
         }).catch(error => {
@@ -55,7 +61,7 @@ export const supabase = createClient<Database>(
     },
     realtime: {
       headers: {
-        'Accept': '*/*',
+        'Accept': 'application/json, text/*, */*',
         'Content-Type': 'application/json',
         'apikey': SUPABASE_PUBLISHABLE_KEY,
         'Prefer': 'return=representation'

@@ -12,35 +12,49 @@ export const generateFallbackModuleDetail = (
     title: string; 
     description: string; 
     learning_objectives?: string[];
-  }
+  } | null
 ): ModuleDetail => {
-  // 学習目標から簡単なコンテンツを生成
-  const objectives = moduleInfo.learning_objectives || ['このモジュールを学ぶ'];
+  console.log('フォールバックモジュール詳細の生成を開始:', moduleInfo);
   
-  // デフォルトのセクションを作成
-  const sections: ModuleSection[] = [
-    {
-      id: 'intro',
-      title: 'はじめに',
-      content: `
+  try {
+    // moduleInfoがnullの場合はデフォルト値を使用
+    if (!moduleInfo) {
+      console.log('moduleInfoがnullのため、デフォルト値を使用します');
+      moduleInfo = {
+        id: `fallback-${Date.now()}`,
+        title: 'コンテンツ利用不可',
+        description: 'コンテンツを表示できません。少し時間をおいて再度お試しください。',
+        learning_objectives: ['一時的なエラーから回復する']
+      };
+    }
+    
+    // 学習目標から簡単なコンテンツを生成
+    const objectives = moduleInfo.learning_objectives || ['このモジュールを学ぶ'];
+    
+    // デフォルトのセクションを作成
+    const sections: ModuleSection[] = [
+      {
+        id: 'intro',
+        title: 'はじめに',
+        content: `
 このセクションでは、${moduleInfo.title}の基本的な概念を学びます。
 
 ${moduleInfo.description}
 
 このモジュールの学習目標:
 ${objectives.map(obj => `- ${obj}`).join('\n')}
-      `,
-      summary: 'このセクションでは、モジュールの基本概念と学習目標を紹介しました。',
-      keyPoints: [
-        'コンテンツの生成に一時的な問題が発生しています',
-        '基本的な情報のみ表示しています',
-        '後ほど再試行することでより詳細なコンテンツが表示されるかもしれません'
-      ]
-    },
-    {
-      id: 'temp-content',
-      title: '一時的なコンテンツ',
-      content: `
+        `,
+        summary: 'このセクションでは、モジュールの基本概念と学習目標を紹介しました。',
+        keyPoints: [
+          'コンテンツの生成に一時的な問題が発生しています',
+          '基本的な情報のみ表示しています',
+          '後ほど再試行することでより詳細なコンテンツが表示されるかもしれません'
+        ]
+      },
+      {
+        id: 'temp-content',
+        title: '一時的なコンテンツ',
+        content: `
 申し訳ありませんが、現在このモジュールの詳細コンテンツは利用できません。
 これは一時的な問題である可能性があります。
 
@@ -51,39 +65,85 @@ ${objectives.map(obj => `- ${obj}`).join('\n')}
 4. 管理者に連絡する
 
 この問題が解決しない場合は、ダッシュボードから別のモジュールを選択するか、後ほど再度お試しください。
-      `,
-      summary: 'このセクションはフォールバックコンテンツです。',
-      keyPoints: [
-        'これは一時的なコンテンツです',
-        '実際のコンテンツ生成に問題が発生しました',
-        '後ほど再試行してください'
-      ]
-    }
-  ];
-
-  // フォールバックモジュール詳細を返す
-  return {
-    id: moduleInfo.id,
-    title: moduleInfo.title,
-    description: moduleInfo.description,
-    content: sections,
-    difficulty: 'beginner',
-    learningObjectives: objectives,
-    prerequisites: ['特になし'],
-    estimatedDuration: '15-30分',
-    category: '一般',
-    estimatedTime: 20,
-    resources: [
+        `,
+        summary: 'このセクションはフォールバックコンテンツです。',
+        keyPoints: [
+          'これは一時的なコンテンツです',
+          '実際のコンテンツ生成に問題が発生しました',
+          '後ほど再試行してください'
+        ]
+      },
       {
-        title: 'フォールバックリソース',
-        url: 'https://example.com',
-        description: '一時的なリソースリンクです。',
-        type: 'web',
-        relevance: 1,
-        tags: ['temporary']
+        id: 'temp-examples',
+        title: '例 (フォールバック)',
+        content: `
+このセクションは、${moduleInfo.title}の基本的な例を提供するためのものですが、
+現在は一時的なフォールバックコンテンツを表示しています。
+        `,
+        examples: [
+          {
+            title: '基本的な例',
+            content: '実際の例はコンテンツ生成が正常に完了した後に表示されます。'
+          }
+        ],
+        summary: 'このセクションはフォールバックの例です。',
+        keyPoints: [
+          'これは一時的な例です',
+          '実際の例は再生成後に表示されます'
+        ]
       }
-    ]
-  };
+    ];
+
+    // フォールバックモジュール詳細を返す
+    const result: ModuleDetail = {
+      id: moduleInfo.id,
+      title: moduleInfo.title,
+      description: moduleInfo.description,
+      content: sections,
+      difficulty: 'beginner',
+      learningObjectives: objectives,
+      prerequisites: ['特になし'],
+      estimatedDuration: '15-30分',
+      category: '一般',
+      estimatedTime: 20,
+      resources: [
+        {
+          title: 'フォールバックリソース',
+          url: 'https://example.com',
+          description: '一時的なリソースリンクです。',
+          type: 'web',
+          relevance: 1,
+          tags: ['temporary']
+        }
+      ]
+    };
+    
+    console.log('フォールバックモジュール詳細の生成完了:', result);
+    return result;
+  } catch (error) {
+    console.error('フォールバックモジュール詳細の生成中にエラーが発生しました:', error);
+    
+    // 最低限のフォールバック
+    return {
+      id: moduleInfo?.id || 'fallback',
+      title: moduleInfo?.title || 'コンテンツ利用不可',
+      description: moduleInfo?.description || '一時的な問題によりコンテンツを表示できません',
+      content: [{
+        id: 'error',
+        title: 'エラー',
+        content: 'コンテンツの生成中にエラーが発生しました。しばらく待ってから再試行してください。',
+        summary: 'エラーが発生しました',
+        keyPoints: ['エラーが発生しました', '再試行してください']
+      }],
+      difficulty: 'beginner',
+      learningObjectives: ['エラーからの回復'],
+      prerequisites: [],
+      estimatedDuration: '不明',
+      category: 'エラー',
+      estimatedTime: 0,
+      resources: []
+    };
+  }
 };
 
 /**

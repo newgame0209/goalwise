@@ -30,6 +30,7 @@ export interface LearningProgress {
     confidence?: number;       // 自己採点の信頼度
     category?: string;         // 質問カテゴリ
   }[];
+  completion_percentage?: number;
 }
 
 // 学習アクティビティの概要
@@ -84,7 +85,8 @@ export const saveProgress = async (progressData: LearningProgress): Promise<bool
       total_questions: progressData.totalQuestions,
       completed: progressData.completed,
       last_updated: new Date().toISOString(),
-      answer_history: progressData.answerHistory || []
+      answer_history: progressData.answerHistory || [],
+      completion_percentage: progressData.completion_percentage || 0
     };
 
     let result;
@@ -156,7 +158,8 @@ export const getProgress = async (
       totalQuestions: data.total_questions,
       completed: data.completed,
       lastUpdated: data.last_updated,
-      answerHistory: data.answer_history
+      answerHistory: data.answer_history,
+      completion_percentage: data.completion_percentage || 0
     };
   } catch (error) {
     console.error('進捗データの取得中に例外が発生しました:', error);
@@ -174,32 +177,25 @@ export const getAllProgress = async (userId: string): Promise<LearningProgress[]
     const { data, error } = await supabase
       .from('learning_progress')
       .select('*')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('全進捗データの取得エラー:', error);
+      console.error('進捗データ取得エラー:', error);
       return [];
     }
 
-    if (!data || data.length === 0) {
-      return [];
-    }
-
-    // データ形式の変換（キャメルケース）
-    return data.map(item => ({
-      id: item.id,
-      userId: item.user_id,
-      moduleId: item.module_id,
-      sessionType: item.session_type as ChatSessionType,
-      questionsAnswered: item.questions_answered,
-      correctAnswers: item.correct_answers,
-      totalQuestions: item.total_questions,
-      completed: item.completed,
-      lastUpdated: item.last_updated,
-      answerHistory: item.answer_history
+    // 学習開始済みのデータのみを返す
+    return (data || []).filter(record => 
+      record.started_at && // 学習開始日時があるもののみ
+      record.session_type === 'content' // コンテンツ学習のみを対象
+    ).map(record => ({
+      ...record,
+      completion_percentage: record.completion_percentage || 0 // 未設定の場合は0%
     }));
+
   } catch (error) {
-    console.error('全進捗データの取得中に例外が発生しました:', error);
+    console.error('進捗データ取得エラー:', error);
     return [];
   }
 };
@@ -210,47 +206,21 @@ export const getAllProgress = async (userId: string): Promise<LearningProgress[]
  * @returns 学習進捗の概要
  */
 export const calculateProgressSummary = (progressList: LearningProgress[]) => {
-  if (!progressList || progressList.length === 0) {
-    return {
-      totalModules: 0,
-      completedModules: 0,
-      totalQuestionsAnswered: 0,
-      totalCorrectAnswers: 0,
-      overallAccuracy: 0,
-      completionRate: 0
-    };
-  }
-
-  // モジュールIDの重複を除去
-  const uniqueModuleIds = [...new Set(progressList.map(p => p.moduleId))];
+  // 学習開始済みのモジュールのみを対象に計算
+  const startedModules = progressList.filter(p => p.started_at);
   
-  // 完了したモジュールの数
-  const completedModules = uniqueModuleIds.filter(moduleId => {
-    return progressList
-      .filter(p => p.moduleId === moduleId)
-      .some(p => p.completed);
-  }).length;
-
-  // 全体の回答数と正解数
-  const totalQuestionsAnswered = progressList.reduce((sum, p) => sum + p.questionsAnswered, 0);
-  const totalCorrectAnswers = progressList.reduce((sum, p) => sum + p.correctAnswers, 0);
-  
-  // 全体の正答率と完了率
-  const overallAccuracy = totalQuestionsAnswered > 0 
-    ? (totalCorrectAnswers / totalQuestionsAnswered) * 100 
-    : 0;
-  
-  const completionRate = uniqueModuleIds.length > 0 
-    ? (completedModules / uniqueModuleIds.length) * 100 
-    : 0;
-
   return {
-    totalModules: uniqueModuleIds.length,
-    completedModules,
-    totalQuestionsAnswered,
-    totalCorrectAnswers,
-    overallAccuracy,
-    completionRate
+    totalModules: progressList.length,
+    completedModules: startedModules.filter(p => p.completion_percentage === 100).length,
+    completionRate: startedModules.length > 0 
+      ? (startedModules.reduce((sum, p) => sum + (p.completion_percentage || 0), 0) / startedModules.length)
+      : 0,
+    totalQuestionsAnswered: startedModules.reduce((sum, p) => sum + (p.questions_answered || 0), 0),
+    totalCorrectAnswers: startedModules.reduce((sum, p) => sum + (p.correct_answers || 0), 0),
+    overallAccuracy: startedModules.reduce((sum, p) => sum + (p.questions_answered || 0), 0) > 0
+      ? (startedModules.reduce((sum, p) => sum + (p.correct_answers || 0), 0) / 
+         startedModules.reduce((sum, p) => sum + (p.questions_answered || 0), 0)) * 100
+      : 0
   };
 };
 
@@ -495,4 +465,30 @@ function determineRecommendedFocus(
   }
   
   return recommendations.slice(0, 3); // 最大3つの推奨に制限
-} 
+}
+
+export const initializeProgress = async (userId: string, moduleId: string): Promise<boolean> => {
+  try {
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from('learning_progress')
+      .insert({
+        user_id: userId,
+        module_id: moduleId,
+        completion_percentage: 0,
+        session_type: 'content',
+        started_at: now,
+        updated_at: now
+      });
+
+    if (error) {
+      console.error('進捗初期化エラー:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('進捗初期化エラー:', error);
+    return false;
+  }
+}; 

@@ -39,6 +39,7 @@ const ModuleViewer = () => {
   const [curriculum, setCurriculum] = useState<CurriculumStructure | null>(null);
   const [currentModule, setCurrentModule] = useState<any>(null);
   const [moduleDetail, setModuleDetail] = useState<ModuleDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // カリキュラムデータを取得
   useEffect(() => {
@@ -56,28 +57,31 @@ const ModuleViewer = () => {
         if (error) throw error;
         
         if (data && data.curriculum_data) {
-          const curriculumData = data.curriculum_data as CurriculumStructure;
-          setCurriculum(curriculumData);
+          const typedData = data.curriculum_data as unknown as CurriculumStructure;
+          setCurriculum(typedData);
           
           // モジュールIDが指定されている場合は該当するモジュールを選択
           if (moduleId) {
-            const module = curriculumData.modules.find(m => m.id === moduleId);
+            const module = typedData.modules.find(m => m.id === moduleId);
             if (module) {
               setCurrentModule(module);
             } else {
               // モジュールが見つからない場合は最初のモジュールを選択
-              setCurrentModule(curriculumData.modules[0]);
+              setCurrentModule(typedData.modules[0]);
             }
           } else {
             // モジュールIDが指定されていない場合は最初のモジュールを選択
-            setCurrentModule(curriculumData.modules[0]);
+            setCurrentModule(typedData.modules[0]);
           }
+        } else {
+          setError("カリキュラムデータが見つかりません。");
         }
-      } catch (error) {
-        console.error('カリキュラムデータ取得エラー:', error);
+      } catch (err) {
+        console.error('カリキュラム取得エラー:', err);
+        setError(err instanceof Error ? err.message : 'カリキュラムの取得中にエラーが発生しました');
         toast({
-          title: 'データ読み込みエラー',
-          description: 'カリキュラムデータの取得に失敗しました',
+          title: 'エラー',
+          description: err instanceof Error ? err.message : 'カリキュラムの取得中にエラーが発生しました',
           variant: 'destructive',
         });
       } finally {
@@ -91,42 +95,44 @@ const ModuleViewer = () => {
   // 選択されたモジュールが変更されたら詳細を取得
   useEffect(() => {
     const fetchModuleDetail = async () => {
-      if (!currentModule) return;
+      if (!currentModule || !user) return;
       
       try {
         setLoading(true);
+        setModuleDetail(null);
+        console.log("Fetching module detail for:", currentModule.title);
         
         // プロファイルデータを取得
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('profile_data')
-          .eq('id', user?.id)
+          .eq('id', user.id)
           .single();
           
         if (profileError) throw profileError;
         
         // プロファイルデータから構造化データを作成
-        const profileAnswers = (profileData.profile_data as any).answers || [];
-        const extractedProfileData: any = {};
-        
-        profileAnswers.forEach((answer: { question: string, answer: string }) => {
-          // 質問に応じてプロファイルデータに追加
-          if (answer.question.includes('学習目標') || answer.question.includes('ゴール')) {
-            extractedProfileData.goal = answer.answer;
-          } else if (answer.question.includes('期限') || answer.question.includes('期間')) {
-            extractedProfileData.timeframe = answer.answer;
-          } else if (answer.question.includes('勉強時間') || answer.question.includes('時間')) {
-            extractedProfileData.studyTime = answer.answer;
-          } else if (answer.question.includes('レベル')) {
-            extractedProfileData.currentLevel = answer.answer;
-          } else if (answer.question.includes('学習スタイル') || answer.question.includes('学習方法')) {
-            extractedProfileData.learningStyle = [answer.answer];
-          } else if (answer.question.includes('動機') || answer.question.includes('活用')) {
-            extractedProfileData.motivation = answer.answer;
-          } else if (answer.question.includes('苦手') || answer.question.includes('障壁') || answer.question.includes('不安')) {
-            extractedProfileData.challenges = answer.answer;
-          }
-        });
+        let extractedProfileData: any = {};
+        if (profileData?.profile_data) {
+          const profileAnswers = (profileData.profile_data as any).answers || [];
+          profileAnswers.forEach((answer: { question: string, answer: string }) => {
+            if (answer.question.includes('学習目標') || answer.question.includes('ゴール')) {
+              extractedProfileData.goal = answer.answer;
+            } else if (answer.question.includes('期限') || answer.question.includes('期間')) {
+              extractedProfileData.timeframe = answer.answer;
+            } else if (answer.question.includes('勉強時間') || answer.question.includes('時間')) {
+              extractedProfileData.studyTime = answer.answer;
+            } else if (answer.question.includes('レベル')) {
+              extractedProfileData.currentLevel = answer.answer;
+            } else if (answer.question.includes('学習スタイル') || answer.question.includes('学習方法')) {
+              extractedProfileData.learningStyle = Array.isArray(answer.answer) ? answer.answer : [answer.answer];
+            } else if (answer.question.includes('動機') || answer.question.includes('活用')) {
+              extractedProfileData.motivation = answer.answer;
+            } else if (answer.question.includes('苦手') || answer.question.includes('障壁') || answer.question.includes('不安')) {
+              extractedProfileData.challenges = answer.answer;
+            }
+          });
+        }
         
         // モジュール詳細を生成
         const moduleInfo = {
@@ -136,6 +142,7 @@ const ModuleViewer = () => {
           learning_objectives: currentModule.learning_objectives
         };
         
+        console.log("Calling generateModuleDetail with:", moduleInfo);
         toast({
           title: 'モジュール詳細を生成中',
           description: '詳細コンテンツの生成には少し時間がかかります...',
@@ -145,29 +152,30 @@ const ModuleViewer = () => {
         
         if (detail) {
           setModuleDetail(detail);
+          console.log("Module Detail Set:", detail);
           toast({
             title: 'モジュール詳細の生成完了',
             description: '学習を開始できます',
           });
         } else {
-          throw new Error('モジュール詳細の生成に失敗しました');
+          throw new Error('モジュール詳細の生成に失敗しました (null が返されました)');
         }
       } catch (error) {
         console.error('モジュール詳細取得エラー:', error);
+        setError(error instanceof Error ? error.message : 'モジュール詳細の生成に失敗しました');
         toast({
           title: 'コンテンツ生成エラー',
-          description: 'モジュール詳細の生成に失敗しました',
+          description: error instanceof Error ? error.message : 'モジュール詳細の生成に失敗しました',
           variant: 'destructive',
         });
       } finally {
         setLoading(false);
+        console.log("Loading state set to false for module detail fetch");
       }
     };
     
-    if (currentModule && !moduleDetail) {
-      fetchModuleDetail();
-    }
-  }, [currentModule, moduleDetail, user, toast]);
+    fetchModuleDetail();
+  }, [currentModule, user, toast]);
 
   // モバイル表示時にはサイドバーを閉じる
   useEffect(() => {
