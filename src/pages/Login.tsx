@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -56,9 +55,9 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <div className="container mx-auto max-w-md py-12 px-4 sm:px-6 lg:px-8 flex-grow flex flex-col justify-center">
-        <div>
+    <div className="min-h-screen flex flex-col items-center justify-center">
+      <div className="container mx-auto max-w-md py-12 px-4 sm:px-6 lg:px-8 flex-grow flex flex-col justify-center items-center">
+        <div className="w-full">
           <Button variant="ghost" size="sm" className="mb-6" asChild>
             <Link to="/">
               <ArrowLeft className="mr-2 h-4 w-4" />

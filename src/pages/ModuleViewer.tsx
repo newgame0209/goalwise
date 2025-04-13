@@ -155,9 +155,9 @@ const ModuleViewer = () => {
   const [activeModule, setActiveModule] = useState('introduction');
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [progress, setProgress] = useState<ProgressState>({
-    introduction: 100,
-    theory: 60,
-    examples: 30,
+    introduction: 0,
+    theory: 0,
+    examples: 0,
     practice: 0
   });
   
@@ -169,6 +169,9 @@ const ModuleViewer = () => {
     step: 1, 
     totalSteps: 3
   });
+
+  // 生成プロセスが開始されたかどうかを追跡
+  const [generationStarted, setGenerationStarted] = useState(false);
   
   const [loadingState, setLoadingState] = useState<LoadingState>(LoadingState.LOADING);
   const [curriculum, setCurriculum] = useState<CurriculumStructure | null>(null);
@@ -200,7 +203,8 @@ const ModuleViewer = () => {
         }
         
         if (data && data.curriculum_data) {
-          const curriculumData = data.curriculum_data as CurriculumStructure;
+          // 型キャストを安全に行うため、まず unknown に変換
+          const curriculumData = data.curriculum_data as unknown as CurriculumStructure;
           setCurriculum(curriculumData);
           
           // モジュールIDが指定されている場合は該当するモジュールを選択
@@ -208,21 +212,58 @@ const ModuleViewer = () => {
             const module = curriculumData.modules.find(m => m.id === moduleId);
             if (module) {
               setCurrentModule(module);
+              console.log('ModuleViewer: 現在のモジュールを設定:', module);
             } else {
               // モジュールが見つからない場合は最初のモジュールを選択
               setCurrentModule(curriculumData.modules[0]);
+              console.log('ModuleViewer: 指定されたモジュールが見つからないため最初のモジュールを選択:', curriculumData.modules[0]);
             }
           } else {
             // モジュールIDが指定されていない場合は最初のモジュールを選択
             setCurrentModule(curriculumData.modules[0]);
+            console.log('ModuleViewer: モジュールIDが指定されていないため最初のモジュールを選択:', curriculumData.modules[0]);
           }
           
           // 進捗情報の取得
-          const progressObj: ProgressState = {};
+          const { data: progressData, error: progressError } = await supabase
+            .from('learning_progress')
+            .select('*')
+            .eq('user_id', user.id);
+            
+          if (progressError) {
+            console.error('進捗データ取得エラー:', progressError);
+          }
+          
+          // 進捗データの初期化（すべて0%から開始）
+          const progressObj = { 
+            introduction: 0,
+            theory: 0,
+            examples: 0,
+            practice: 0
+          } as ProgressState;
+          
           curriculumData.modules.forEach((module: any) => {
-            progressObj[module.id] = module.progress || 0;
+            progressObj[module.id] = 0;
           });
+          
+          // 取得した進捗データを反映（実際に学習を開始したモジュールのみ）
+          if (progressData) {
+            progressData.forEach((record: any) => {
+              if (record.module_id && 
+                  record.completion_percentage && 
+                  record.session_type === 'content' && 
+                  record.started_at) { // 学習開始日時がある場合のみ進捗を反映
+                progressObj[record.module_id] = record.completion_percentage;
+              }
+            });
+          }
+          
           setProgress(progressObj);
+          
+          // モジュールデータを取得したらすぐにモジュール詳細の生成を開始
+          setTimeout(() => {
+            generateModuleContent();
+          }, 500);
         } else {
           setLoadingState(LoadingState.NO_DATA);
           setErrorMessage('カリキュラムデータが見つかりませんでした。まずはプロファイリングを完了させてください。');
@@ -230,22 +271,45 @@ const ModuleViewer = () => {
       } catch (error) {
         console.error('カリキュラムデータ取得エラー:', error);
         setLoadingState(LoadingState.ERROR);
-        setErrorMessage('カリキュラムデータの取得に失敗しました。ネットワーク接続を確認してもう一度お試しください。');
-        toast({
-          title: 'データ読み込みエラー',
-          description: 'カリキュラムデータの取得に失敗しました',
-          variant: 'destructive',
-        });
+        setErrorMessage('カリキュラムデータの取得に失敗しました。');
       }
     };
-    
+
     fetchCurriculum();
-  }, [user, moduleId, toast]);
+  }, [user, moduleId]);
   
   // モジュール詳細を生成する関数
   const generateModuleContent = async () => {
+    // currentModuleが設定されていない場合は処理をスキップ
+    if (!currentModule) {
+      console.log('ModuleViewer: currentModuleが設定されていません。処理をスキップします。');
+      // フォールバックコンテンツを表示
+      try {
+        console.log('ModuleViewer: currentModuleが未設定のためフォールバックコンテンツを生成します');
+        const fallbackContent = generateFallbackModuleDetail(null);
+        if (fallbackContent) {
+          console.log('ModuleViewer: フォールバックコンテンツを生成しました');
+          setModuleDetail(fallbackContent);
+          setLoadingState(LoadingState.SUCCESS);
+          
+          toast({
+            title: 'フォールバックコンテンツを表示',
+            description: 'コンテンツデータを取得できませんでした。基本的なコンテンツを表示しています。',
+            variant: 'default',
+          });
+        }
+      } catch (fallbackError) {
+        console.error('ModuleViewer: フォールバックコンテンツ生成エラー:', fallbackError);
+        setLoadingState(LoadingState.ERROR);
+        setErrorMessage('コンテンツを表示できません。再度お試しください。');
+      }
+      return;
+    }
+    
     // APIキーが設定されているか確認
     const apiKey = getOpenAIKey();
+    console.log('ModuleViewer: APIキー確認:', apiKey ? 'APIキーが設定されています' : 'APIキーが設定されていません');
+    
     if (!apiKey) {
       setGenerationStatus({
         status: 'error',
@@ -263,7 +327,17 @@ const ModuleViewer = () => {
       return;
     }
 
+    // タイムアウト処理の追加
+    let timeoutId: NodeJS.Timeout | null = null;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        console.log('ModuleViewer: 生成プロセスがタイムアウトしました (3分)');
+        reject(new Error('モジュール生成がタイムアウトしました。再度お試しください。'));
+      }, 180000); // 3分でタイムアウト
+    });
+
     try {
+      console.log('ModuleViewer: モジュール生成プロセスを開始します。モジュールID:', moduleId);
       setLoadingState(LoadingState.LOADING);
       
       // ステップ1: モジュール詳細をSupabaseから検索
@@ -275,6 +349,7 @@ const ModuleViewer = () => {
         step: 1,
         totalSteps: 3
       });
+      console.log('ModuleViewer: ステップ1 - Supabaseからモジュール詳細の検索を開始');
       
       // Supabaseからモジュール詳細を検索
       const { data, error } = await supabase
@@ -284,16 +359,19 @@ const ModuleViewer = () => {
         .single();
       
       if (error && error.code !== 'PGRST116') { // PGRST116 = データが見つからない
-        console.error('モジュール詳細取得エラー:', error);
+        console.error('ModuleViewer: モジュール詳細取得エラー:', error);
         throw error;
       }
       
       // モジュール詳細が存在する場合はそれを使用
       if (data) {
-        console.log('既存のモジュール詳細を取得しました:', data);
+        console.log('ModuleViewer: 既存のモジュール詳細を取得しました:', data);
         setModuleDetail(data.detail_data);
         setLoadingState(LoadingState.SUCCESS);
+        if (timeoutId) clearTimeout(timeoutId);
         return;
+      } else {
+        console.log('ModuleViewer: 既存のモジュール詳細がありません。新規生成を開始します');
       }
       
       // ステップ2: モジュール詳細が存在しない場合は生成
@@ -305,9 +383,12 @@ const ModuleViewer = () => {
         step: 2,
         totalSteps: 3
       });
+      console.log('ModuleViewer: ステップ2 - モジュール詳細の生成を開始');
+      console.log('ModuleViewer: 現在のモジュール情報:', currentModule);
       
       // モジュール詳細を取得するためのコールバック関数
       const progressCallback = (status: string, progress: number, estimatedTime?: number) => {
+        console.log(`ModuleViewer: 生成進捗 - ${status}, ${progress}%, 残り時間: ${estimatedTime || '不明'}秒`);
         setGenerationStatus({
           ...generationStatus,
           status,
@@ -318,8 +399,8 @@ const ModuleViewer = () => {
         });
       };
       
-      // モジュールがない場合は新規生成
-      const moduleDetail = await generateModuleDetail(
+      // モジュールがない場合は新規生成 (タイムアウト処理を追加)
+      const generatePromise = generateModuleDetail(
         currentModule,
         { 
           maxRetries: 2, 
@@ -328,9 +409,18 @@ const ModuleViewer = () => {
         }
       );
       
+      // タイムアウト処理と生成処理を競争させる
+      console.log('ModuleViewer: OpenAI APIによるモジュール詳細生成を開始（タイムアウト: 3分）');
+      const moduleDetail = await Promise.race([generatePromise, timeoutPromise]);
+
+      if (timeoutId) clearTimeout(timeoutId);
+      
       if (!moduleDetail) {
+        console.error('ModuleViewer: モジュール詳細が生成されませんでした');
         throw new Error('モジュール詳細の生成に失敗しました。');
       }
+      
+      console.log('ModuleViewer: モジュール詳細の生成に成功しました:', moduleDetail);
       
       // ステップ3: 生成したモジュール詳細をSupabaseに保存
       setGenerationStatus({
@@ -341,6 +431,7 @@ const ModuleViewer = () => {
         step: 3,
         totalSteps: 3
       });
+      console.log('ModuleViewer: ステップ3 - 生成したモジュール詳細をSupabaseに保存');
       
       // 生成したモジュール詳細をSupabaseに保存
       const { error: saveError } = await supabase
@@ -354,9 +445,11 @@ const ModuleViewer = () => {
         }]);
       
       if (saveError) {
-        console.error('モジュール詳細保存エラー:', saveError);
+        console.error('ModuleViewer: モジュール詳細保存エラー:', saveError);
         // 保存に失敗してもモジュール詳細は表示する
-        console.warn('モジュール詳細の保存に失敗しましたが、生成されたデータを表示します');
+        console.warn('ModuleViewer: モジュール詳細の保存に失敗しましたが、生成されたデータを表示します');
+      } else {
+        console.log('ModuleViewer: モジュール詳細が正常にSupabaseに保存されました');
       }
       
       setModuleDetail(moduleDetail);
@@ -371,6 +464,7 @@ const ModuleViewer = () => {
         step: 3,
         totalSteps: 3
       });
+      console.log('ModuleViewer: モジュール生成プロセスが正常に完了しました');
       
       // 進捗状態を更新
       const newProgress = { ...progress };
@@ -391,14 +485,19 @@ const ModuleViewer = () => {
           });
         
         if (progressError) {
-          console.error('進捗データ保存エラー:', progressError);
+          console.error('ModuleViewer: 進捗データ保存エラー:', progressError);
+        } else {
+          console.log('ModuleViewer: 進捗データが正常に保存されました');
         }
       } catch (progressSaveError) {
-        console.error('進捗データ保存中にエラーが発生しました:', progressSaveError);
+        console.error('ModuleViewer: 進捗データ保存中にエラーが発生しました:', progressSaveError);
       }
       
     } catch (error) {
-      console.error('モジュール詳細取得/生成エラー:', error);
+      console.error('ModuleViewer: モジュール詳細取得/生成エラー:', error);
+      
+      // タイムアウトをクリア
+      if (timeoutId) clearTimeout(timeoutId);
       
       // エラー状態を設定
       setLoadingState(LoadingState.ERROR);
@@ -420,12 +519,14 @@ const ModuleViewer = () => {
       
       setErrorType(errorType);
       setErrorMessage(error instanceof Error ? error.message : '不明なエラーが発生しました');
+      console.log(`ModuleViewer: エラータイプ: ${errorType}, メッセージ: ${error instanceof Error ? error.message : '不明なエラー'}`);
       
       // フォールバックコンテンツの生成を試みる
       try {
+        console.log('ModuleViewer: フォールバックコンテンツの生成を試みます');
         const fallbackContent = generateFallbackModuleDetail(currentModule);
         if (fallbackContent) {
-          console.log('フォールバックコンテンツを生成しました:', fallbackContent);
+          console.log('ModuleViewer: フォールバックコンテンツを生成しました:', fallbackContent);
           setModuleDetail(fallbackContent);
           setLoadingState(LoadingState.SUCCESS);
           
@@ -436,7 +537,7 @@ const ModuleViewer = () => {
           });
         }
       } catch (fallbackError) {
-        console.error('フォールバックコンテンツ生成エラー:', fallbackError);
+        console.error('ModuleViewer: フォールバックコンテンツ生成エラー:', fallbackError);
       }
     }
   };
@@ -445,8 +546,16 @@ const ModuleViewer = () => {
   useEffect(() => {
     if (moduleId && currentModule && moduleId !== currentModule.id) {
       setModuleDetail(null); // モジュール詳細をリセット
+      setGenerationStarted(false); // 生成状態もリセット
     }
-  }, [moduleId, currentModule]);
+    
+    // currentModuleが設定されていて、まだ生成が開始されていなければ生成を開始
+    if (currentModule && !generationStarted && loadingState !== LoadingState.SUCCESS) {
+      console.log('ModuleViewer: currentModuleが設定されたので生成を開始します');
+      setGenerationStarted(true);
+      generateModuleContent();
+    }
+  }, [moduleId, currentModule, generationStarted, loadingState]);
 
   // モジュール詳細生成後の進捗更新処理
   useEffect(() => {
@@ -454,34 +563,6 @@ const ModuleViewer = () => {
       if (!user || !currentModule || !moduleDetail) return;
       
       try {
-        // 進捗データをSupabaseに保存
-        const { error } = await supabase
-          .from('user_curriculum')
-          .update({
-            updated_at: new Date().toISOString(),
-            curriculum_data: {
-              ...curriculum,
-              modules: curriculum?.modules.map((m: any) => {
-                if (m.id === currentModule.id) {
-                  return {
-                    ...m,
-                    progress: Math.max(m.progress || 0, 25) // 最低25%の進捗を設定
-                  };
-                }
-                return m;
-              })
-            }
-          })
-          .eq('user_id', user.id);
-          
-        if (error) {
-          console.error('進捗更新エラー:', error);
-        }
-        
-        // learning_progressテーブルに進捗を保存/更新
-        const moduleProgress = Math.max(progress[currentModule.id] || 0, 25);
-        const now = new Date().toISOString();
-        
         // learning_progressテーブルのレコードを確認
         const { data: existingProgress, error: fetchError } = await supabase
           .from('learning_progress')
@@ -491,53 +572,30 @@ const ModuleViewer = () => {
           .eq('session_type', 'content')
           .single();
           
-        if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116: データが見つからない
+        if (fetchError && fetchError.code !== 'PGRST116') {
           console.error('進捗データ取得エラー:', fetchError);
+          return;
         }
         
-        const duration_minutes = 30; // 最初のアクセスで30分と仮定
-        const completion_percentage = moduleProgress;
-        
+        // 既存の進捗データがある場合のみ更新
         if (existingProgress) {
-          // 既存のレコードを更新
           const { error: updateError } = await supabase
             .from('learning_progress')
             .update({
-              completion_percentage: completion_percentage,
-              duration_minutes: existingProgress.duration_minutes + 5, // 5分追加
-              updated_at: now,
-              completed: moduleProgress >= 100
+              updated_at: new Date().toISOString()
             })
             .eq('id', existingProgress.id);
             
           if (updateError) {
             console.error('learning_progress更新エラー:', updateError);
           }
-        } else {
-          // 新規レコードを作成
-          const { error: insertError } = await supabase
-            .from('learning_progress')
-            .insert({
-              user_id: user.id,
-              module_id: currentModule.id,
-              session_type: 'content',
-              completion_percentage: completion_percentage,
-              duration_minutes: duration_minutes,
-              created_at: now,
-              updated_at: now,
-              completed: moduleProgress >= 100
-            });
-            
-          if (insertError) {
-            console.error('learning_progress作成エラー:', insertError);
-          }
+          
+          // ローカルの進捗状態を更新
+          setProgress(prev => ({
+            ...prev,
+            [currentModule.id]: existingProgress.completion_percentage
+          }));
         }
-        
-        // ローカルの進捗状態も更新
-        setProgress(prev => ({
-          ...prev,
-          [currentModule.id]: Math.max(prev[currentModule.id] || 0, 25)
-        }));
       } catch (err) {
         console.error('進捗更新中のエラー:', err);
       }
@@ -546,31 +604,49 @@ const ModuleViewer = () => {
     if (moduleDetail && loadingState === LoadingState.SUCCESS) {
       updateModuleProgress();
     }
-  }, [user, currentModule, moduleDetail, loadingState, curriculum, supabase, progress]);
+  }, [user, currentModule, moduleDetail, loadingState]);
 
   // モバイル表示時にはサイドバーを閉じる
   useEffect(() => {
     setSidebarOpen(!isMobile);
   }, [isMobile]);
 
-  const handleModuleChange = (moduleId: string) => {
+  const handleModuleChange = async (moduleId: string) => {
     setActiveModule(moduleId);
     
-    // モバイル表示時には、モジュール選択後にサイドバーを閉じる
     if (isMobile) {
       setSidebarOpen(false);
     }
     
-    // 進捗を更新
+    // 進捗の更新は学習開始時のみ
     if (progress[moduleId] === 0) {
-      const newProgress = { ...progress };
-      newProgress[moduleId] = 10;
-      setProgress(newProgress);
-      
-      toast({
-        title: "進捗が更新されました",
-        description: `${moduleId}モジュールの学習を開始しました`,
-      });
+      try {
+        const now = new Date().toISOString();
+        const { error: progressError } = await supabase
+          .from('learning_progress')
+          .insert({
+            user_id: user?.id,
+            module_id: moduleId,
+            completion_percentage: 0,
+            session_type: 'content',
+            started_at: now,
+            updated_at: now
+          });
+          
+        if (progressError) throw progressError;
+        
+        // ローカルの進捗状態は0%のまま維持
+        const newProgress = { ...progress };
+        newProgress[moduleId] = 0;
+        setProgress(newProgress);
+        
+        toast({
+          title: "学習を開始しました",
+          description: `${moduleId}モジュールの学習を開始しました`,
+        });
+      } catch (error) {
+        console.error('進捗データ保存エラー:', error);
+      }
     }
   };
 
@@ -772,6 +848,25 @@ const ModuleViewer = () => {
     setCurrentSectionId(sectionId);
   };
 
+  // チャットセッションの開始処理を追加
+  const handleChatSessionStart = (type: ChatSessionType) => {
+    setChatSessionType(type);
+    // ここに必要な処理を追加
+    console.log(`ModuleViewer: チャットセッション開始 - タイプ: ${type}`);
+    // chatSessionをstartSessionで開始
+    startSession(type);
+  };
+
+  // タブ切り替え時の処理
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    if (value === 'chat' && !isChatOpen) {
+      setIsChatOpen(true);
+      // チャットが初めて開かれる場合はデフォルトのセッションを設定
+      handleChatSessionStart('practice');
+    }
+  };
+
   // ローディング状態に応じて表示を切り替え
   const renderContent = () => {
     switch (loadingState) {
@@ -838,7 +933,7 @@ const ModuleViewer = () => {
         
         // モジュール詳細がある場合は通常コンテンツを表示
         return (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full h-full flex flex-col">
             <div className="border-b">
               <div className="flex justify-between items-center px-4 py-2">
                 <div className="flex items-center">
@@ -877,7 +972,7 @@ const ModuleViewer = () => {
               <LearningChatProvider>
                 <LearningChat
                   moduleDetail={moduleDetail}
-                  onSessionStart={(type) => handleChatSessionStart(type)}
+                  onSessionStart={handleChatSessionStart}
                   onSessionComplete={handleChatComplete}
                 />
               </LearningChatProvider>
@@ -914,7 +1009,7 @@ const ModuleViewer = () => {
         <div className="flex h-screen flex-col">
           <Navbar />
           <div className="flex flex-1 overflow-hidden">
-            <div className={`${sidebarOpen ? 'block' : 'hidden'} ${isMobile ? 'fixed inset-0 z-10 bg-background/95 backdrop-blur-sm' : ''}`}>
+            <div className={`${sidebarOpen ? 'block' : 'hidden'} ${isMobile ? 'fixed inset-0 z-10 bg-background/95 backdrop-blur-sm' : 'w-72 flex-shrink-0'}`}>
               <MaterialSidebar 
                 activeModule={currentModule?.id || 'introduction'} 
                 onModuleChange={handleModuleChange}
@@ -923,7 +1018,7 @@ const ModuleViewer = () => {
               />
             </div>
             
-            <div className="flex-1 overflow-auto pb-20">
+            <div className="flex-1 overflow-auto pb-20 w-full">
               {renderContent()}
             </div>
           </div>
