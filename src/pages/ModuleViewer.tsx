@@ -740,7 +740,7 @@ const ModuleViewer = () => {
             </div>
 
             {/* MaterialContent に Props を正しく渡す */}
-            <TabsContent value="content" className="flex-1 overflow-auto px-0">
+            <TabsContent value="content" className="flex-1 overflow-auto px-0 w-full">
               {/* MaterialContent に渡す props を修正 */}
               <MaterialContent 
                   moduleDetail={moduleDetail}
@@ -751,7 +751,7 @@ const ModuleViewer = () => {
             </TabsContent>
 
             {/* LearningChatProvider はページ全体で1回だけ使うべき */}
-            <TabsContent value="chat" className="flex-1 overflow-hidden p-0">
+            <TabsContent value="chat" className="flex-1 overflow-hidden p-0 w-full">
               {/* LearningChat に Props を正しく渡す */}
               {/* <LearningChat
                 moduleDetail={moduleDetail}
@@ -761,7 +761,7 @@ const ModuleViewer = () => {
               /> */}
             </TabsContent>
 
-            <TabsContent value="resources" className="flex-1 overflow-auto p-6"> {/* Padding を追加 */}
+            <TabsContent value="resources" className="flex-1 overflow-auto p-6 w-full"> {/* Padding を追加 */}
               {/* ResourceList に Props を正しく渡す */}
               {/* <ResourceList
                 resources={moduleDetail.resources || []}
@@ -833,7 +833,7 @@ const ModuleViewer = () => {
               {/* メインコンテンツエリア */}
               <main className="flex-1 overflow-y-auto w-full pb-16"> {/* overflow-y-auto */}
                  {/* コンテンツの左右に適切なパディング/マージンを設定 */}
-                 <div className="container mx-auto px-4 md:px-6 lg:px-8 py-6"> 
+                 <div className="container mx-auto max-w-6xl px-4 md:px-6 lg:px-8 py-6"> 
                       {renderContent()}
                  </div>
               </main>
