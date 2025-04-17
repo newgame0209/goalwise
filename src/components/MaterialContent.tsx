@@ -290,7 +290,7 @@ const DefaultModuleContent = ({ activeModule, onStartPractice }: MaterialContent
   
   // 導入モジュールのコンテンツ
   const IntroductionModule = () => (
-    <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
+    <div className="space-y-8 animate-fade-in max-w-full mx-auto">
       <div>
         <h1 className="text-3xl font-bold mb-4">データ分析の基礎: はじめに</h1>
         <div className="flex flex-wrap gap-2 mb-6">
@@ -515,7 +515,7 @@ const DefaultModuleContent = ({ activeModule, onStartPractice }: MaterialContent
   
   // 理論モジュールのコンテンツ（他のモジュールも同様のパターンで実装）
   const TheoryModule = () => (
-    <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
+    <div className="space-y-8 animate-fade-in max-w-full mx-auto">
       <div>
         <h1 className="text-3xl font-bold mb-4">データ分析の理論と手法</h1>
         <div className="flex flex-wrap gap-2 mb-6">

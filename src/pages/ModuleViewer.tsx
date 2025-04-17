@@ -990,11 +990,11 @@ const ModuleViewer = () => {
               </div>
             </div>
             
-            <TabsContent value="content" className="flex-1 overflow-auto px-0">
+            <TabsContent value="content" className="flex-1 overflow-auto px-0 w-full">
               <MaterialContent content={moduleDetail} />
             </TabsContent>
             
-            <TabsContent value="chat" className="flex-1 overflow-hidden p-0">
+            <TabsContent value="chat" className="flex-1 overflow-hidden p-0 w-full">
               <LearningChatProvider>
                 <LearningChat
                   moduleDetail={moduleDetail}
@@ -1004,7 +1004,7 @@ const ModuleViewer = () => {
               </LearningChatProvider>
             </TabsContent>
             
-            <TabsContent value="resources" className="flex-1 overflow-auto">
+            <TabsContent value="resources" className="flex-1 overflow-auto w-full">
               <ResourceList moduleId={moduleId || ''} resources={moduleDetail.resources || []} />
             </TabsContent>
           </Tabs>
@@ -1063,7 +1063,7 @@ const ModuleViewer = () => {
               </Button>
             )}
             
-            <div className="container mx-auto px-4 py-6 md:px-6 lg:px-8 max-w-5xl">
+            <div className="container mx-auto px-4 py-6 md:px-6 lg:px-8 max-w-full">
               {loadingState === LoadingState.LOADING ? (
                 <div className="mt-20">
                   {generationStarted ? (
