@@ -152,7 +152,7 @@ const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentM
   };
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
       <div>
         <h1 className="text-3xl font-bold mb-4">{moduleDetail.title}</h1>
         <div className="flex flex-wrap gap-2 mb-6">
@@ -251,24 +251,20 @@ const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentM
         <TabsContent value="notes" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>学習ノート</CardTitle>
+              <CardTitle>ノート</CardTitle>
               <CardDescription>
-                このモジュールで学んだことをメモして復習に役立てましょう
+                このモジュールの学習過程で記録したノートを管理できます
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <textarea 
-                className="w-full h-32 p-2 border rounded-md" 
+              <textarea
+                className="min-h-[200px] w-full border rounded-md p-4 resize-y"
                 placeholder="ここにノートを入力してください..."
               />
             </CardContent>
             <CardFooter className="flex justify-between">
-              <Button variant="outline">
-                クリア
-              </Button>
-              <Button>
-                保存
-              </Button>
+              <Button variant="outline">クリア</Button>
+              <Button>保存</Button>
             </CardFooter>
           </Card>
         </TabsContent>
@@ -294,7 +290,7 @@ const DefaultModuleContent = ({ activeModule, onStartPractice }: MaterialContent
   
   // 導入モジュールのコンテンツ
   const IntroductionModule = () => (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
       <div>
         <h1 className="text-3xl font-bold mb-4">データ分析の基礎: はじめに</h1>
         <div className="flex flex-wrap gap-2 mb-6">
@@ -519,7 +515,7 @@ const DefaultModuleContent = ({ activeModule, onStartPractice }: MaterialContent
   
   // 理論モジュールのコンテンツ（他のモジュールも同様のパターンで実装）
   const TheoryModule = () => (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
       <div>
         <h1 className="text-3xl font-bold mb-4">データ分析の理論と手法</h1>
         <div className="flex flex-wrap gap-2 mb-6">

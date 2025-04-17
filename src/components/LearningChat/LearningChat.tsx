@@ -386,6 +386,7 @@ const LearningChat: React.FC<LearningChatProps> = ({
             placeholder={isQuizMode ? '回答を入力してください...' : 'メッセージを入力...'}
             className="flex-1 px-3 py-2 bg-background border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
             disabled={state.isLoading}
+
           />
           <Button 
             onClick={handleSendMessage} 

@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { CurriculumStructure, generateModuleDetail, ModuleDetail } from '@/services/openai';
 import { useSearchParams, useParams } from 'react-router-dom';
-import { AlertCircle, RefreshCw, BookOpen, Loader2, AlertTriangle, Bot, FileText } from 'lucide-react';
+import { AlertCircle, RefreshCw, BookOpen, Loader2, AlertTriangle, Bot, FileText, ListTree, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { LearningChat, LearningChatProvider } from '@/components/LearningChat';
@@ -224,41 +224,26 @@ const ModuleViewer = () => {
             console.log('ModuleViewer: モジュールIDが指定されていないため最初のモジュールを選択:', curriculumData.modules[0]);
           }
           
-          // 進捗情報の取得
-          const { data: progressData, error: progressError } = await supabase
-            .from('learning_progress')
-            .select('*')
-            .eq('user_id', user.id);
+          // 進捗情報を取得
+          try {
+            const { data: progressData, error: progressError } = await supabase
+              .from('learning_progress')
+              .select('*')
+              .eq('user_id', user?.id)
+              .eq('module_id', currentModule.id)
+              .eq('session_type', 'content:1')
+              .limit(1);
             
-          if (progressError) {
+            if (progressData && progressData.length > 0 && !progressError) {
+              // 個別のセクションの進捗を更新
+              setProgress(prev => ({
+                ...prev,
+                [currentModule.id]: progressData[0].completion_percentage || 0
+              }));
+            }
+          } catch (progressError) {
             console.error('進捗データ取得エラー:', progressError);
           }
-          
-          // 進捗データの初期化（すべて0%から開始）
-          const progressObj = { 
-            introduction: 0,
-            theory: 0,
-            examples: 0,
-            practice: 0
-          } as ProgressState;
-          
-          curriculumData.modules.forEach((module: any) => {
-            progressObj[module.id] = 0;
-          });
-          
-          // 取得した進捗データを反映（実際に学習を開始したモジュールのみ）
-          if (progressData) {
-            progressData.forEach((record: any) => {
-              if (record.module_id && 
-                  record.completion_percentage && 
-                  record.session_type === 'content' && 
-                  record.started_at) { // 学習開始日時がある場合のみ進捗を反映
-                progressObj[record.module_id] = record.completion_percentage;
-              }
-            });
-          }
-          
-          setProgress(progressObj);
           
           // モジュールデータを取得したらすぐにモジュール詳細の生成を開始
           setTimeout(() => {
@@ -433,23 +418,23 @@ const ModuleViewer = () => {
       });
       console.log('ModuleViewer: ステップ3 - 生成したモジュール詳細をSupabaseに保存');
       
-      // 生成したモジュール詳細をSupabaseに保存
+      // detailDataとして保存する前にJSONとして処理
+      const detailDataForStorage = JSON.parse(JSON.stringify(moduleDetail));
+
+      // 生成されたモジュール詳細をSupabaseに保存
       const { error: saveError } = await supabase
         .from('module_details')
-        .insert([{
-          module_id: moduleId,
-          detail_data: moduleDetail,
-          user_id: user.id,
+        .insert({
+          module_id: currentModule.id,
+          user_id: user?.id,
+          detail_data: detailDataForStorage,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
-        }]);
+        });
       
       if (saveError) {
-        console.error('ModuleViewer: モジュール詳細保存エラー:', saveError);
-        // 保存に失敗してもモジュール詳細は表示する
-        console.warn('ModuleViewer: モジュール詳細の保存に失敗しましたが、生成されたデータを表示します');
-      } else {
-        console.log('ModuleViewer: モジュール詳細が正常にSupabaseに保存されました');
+        console.error('モジュール詳細の保存エラー:', saveError);
+        // 保存に失敗しても、生成されたコンテンツは表示
       }
       
       setModuleDetail(moduleDetail);
@@ -468,29 +453,27 @@ const ModuleViewer = () => {
       
       // 進捗状態を更新
       const newProgress = { ...progress };
-      if (!newProgress[moduleId] || newProgress[moduleId] < 25) {
-        newProgress[moduleId] = 25; // モジュール詳細の閲覧で25%進捗
+      if (!newProgress[currentModule.id] || newProgress[currentModule.id] < 25) {
+        newProgress[currentModule.id] = 25; // モジュール詳細の閲覧で25%進捗
         setProgress(newProgress);
       }
       
-      // 進捗データをSupabaseに保存
-      try {
-        const { error: progressError } = await supabase
-          .from('learning_progress')
-          .upsert({
-            user_id: user.id,
-            module_id: moduleId,
-            progress: 25,
-            updated_at: new Date().toISOString()
-          });
-        
-        if (progressError) {
-          console.error('ModuleViewer: 進捗データ保存エラー:', progressError);
-        } else {
-          console.log('ModuleViewer: 進捗データが正常に保存されました');
-        }
-      } catch (progressSaveError) {
-        console.error('ModuleViewer: 進捗データ保存中にエラーが発生しました:', progressSaveError);
+      // 進捗情報を作成/更新
+      const { error: progressError } = await supabase
+        .from('learning_progress')
+        .upsert({
+          user_id: user?.id,
+          module_id: currentModule.id,
+          session_type: 'content:1',
+          completion_percentage: 0,
+          duration_minutes: 0,
+          completed: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+
+      if (progressError) {
+        console.error('進捗データの保存エラー:', progressError);
       }
       
     } catch (error) {
@@ -663,61 +646,27 @@ const ModuleViewer = () => {
     newProgress.practice = 20;
     setProgress(newProgress);
     
-    // learning_progressテーブルに練習セッション情報を記録
-    if (user && currentModule) {
-      (async () => {
-        const now = new Date().toISOString();
-        
-        try {
-          // セッションの存在確認
-          const { data: existingSession, error: fetchError } = await supabase
-            .from('learning_progress')
-            .select('*')
-            .eq('user_id', user.id)
-            .eq('module_id', currentModule.id)
-            .eq('session_type', 'practice')
-            .single();
-            
-          if (fetchError && fetchError.code !== 'PGRST116') {
-            console.error('練習セッション取得エラー:', fetchError);
-          }
-          
-          if (existingSession) {
-            // 既存のセッションを更新
-            const { error: updateError } = await supabase
-              .from('learning_progress')
-              .update({
-                completion_percentage: 20,
-                updated_at: now,
-              })
-              .eq('id', existingSession.id);
-              
-            if (updateError) {
-              console.error('練習セッション更新エラー:', updateError);
-            }
-          } else {
-            // 新規セッションを作成
-            const { error: insertError } = await supabase
-              .from('learning_progress')
-              .insert({
-                user_id: user.id,
-                module_id: currentModule.id,
-                session_type: 'practice',
-                completion_percentage: 20,
-                duration_minutes: 0,
-                created_at: now,
-                updated_at: now,
-                completed: false
-              });
-              
-            if (insertError) {
-              console.error('練習セッション作成エラー:', insertError);
-            }
-          }
-        } catch (err) {
-          console.error('練習セッション処理エラー:', err);
-        }
-      })();
+    // セッション開始のログを記録
+    try {
+      if (user && currentModule) {
+        supabase
+          .from('learning_progress')
+          .upsert({
+            user_id: user.id,
+            module_id: currentModule.id,
+            session_type: 'practice',
+            completion_percentage: 0,
+            duration_minutes: 0,
+            completed: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .then(({ error }) => {
+            if (error) console.error('練習セッション記録エラー:', error);
+          });
+      }
+    } catch (error) {
+      console.error('練習セッション記録エラー:', error);
     }
   };
 
@@ -874,14 +823,11 @@ const ModuleViewer = () => {
         return (
           <div className="flex flex-col items-center justify-center h-full p-8">
             <ProgressIndicator 
-              value={generationStatus.progress}
               status={generationStatus.status}
+              value={generationStatus.progress}
               estimatedTime={generationStatus.estimatedTime}
               currentStep={generationStatus.step}
               totalSteps={generationStatus.totalSteps}
-              showDetails={true}
-              animated={true}
-              className="max-w-md w-full mb-6"
             />
             <p className="text-muted-foreground">AIによってコンテンツが生成されています。少々お待ちください。</p>
           </div>
@@ -1004,28 +950,135 @@ const ModuleViewer = () => {
   };
 
   return (
-    <LearningChatProvider>
-      <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <div className="flex h-screen flex-col">
-          <Navbar />
-          <div className="flex flex-1 overflow-hidden">
-            <div className={`${sidebarOpen ? 'block' : 'hidden'} ${isMobile ? 'fixed inset-0 z-10 bg-background/95 backdrop-blur-sm' : 'w-72 flex-shrink-0'}`}>
+    <div className="flex flex-col min-h-screen">
+      <Navbar />
+      
+      <div className="flex-1 flex overflow-hidden">
+        <SidebarProvider>
+          <div 
+            className={`bg-background border-r shrink-0 transition-all duration-300 ${
+              sidebarOpen ? (isMobile ? 'w-full absolute inset-0 z-50' : 'w-64 md:w-72') : 'w-0'
+            }`}
+          >
+            {(sidebarOpen || !isMobile) && (
               <MaterialSidebar 
-                activeModule={currentModule?.id || 'introduction'} 
+                activeModule={activeModule}
                 onModuleChange={handleModuleChange}
                 progress={progress}
                 curriculumModules={curriculum?.modules}
               />
-            </div>
+            )}
+          </div>
+          
+          <div className="flex-1 overflow-auto w-full pb-16 relative bg-background">
+            {!sidebarOpen && !isMobile && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={toggleSidebar} 
+                className="absolute left-4 top-4 z-10"
+              >
+                <ListTree className="h-4 w-4 mr-2" />
+                モジュール
+              </Button>
+            )}
             
-            <div className="flex-1 overflow-auto pb-20 w-full">
-              {renderContent()}
+            <div className="container mx-auto px-4 py-6 md:px-6 lg:px-8 max-w-5xl">
+              {loadingState === LoadingState.LOADING ? (
+                <div className="mt-20">
+                  {generationStarted ? (
+                    <ProgressIndicator 
+                      status={generationStatus.status}
+                      value={generationStatus.progress}
+                      estimatedTime={generationStatus.estimatedTime}
+                      currentStep={generationStatus.step}
+                      totalSteps={generationStatus.totalSteps}
+                    />
+                  ) : (
+                    <LoadingStateComponent />
+                  )}
+                </div>
+              ) : loadingState === LoadingState.ERROR ? (
+                <ErrorState 
+                  onRetry={() => generateModuleContent()} 
+                  errorType={errorType}
+                  errorMessage={errorMessage}
+                />
+              ) : (
+                <div className="relative">
+                  {isMobile && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={toggleSidebar} 
+                      className="absolute -top-2 right-0 mb-4"
+                    >
+                      <ListTree className="h-4 w-4 mr-2" />
+                      {sidebarOpen ? 'コンテンツ表示' : 'モジュール表示'}
+                    </Button>
+                  )}
+                  
+                  <LearningChatProvider>
+                    <div className={`transition-all duration-300 ${isChatOpen ? 'mr-0 lg:mr-80' : 'mr-0'}`}>
+                      <MaterialContent 
+                        activeModule={activeModule}
+                        onStartPractice={handleStartPractice}
+                        moduleDetail={moduleDetail}
+                        currentModule={currentModule}
+                        toggleSidebar={toggleSidebar}
+                        isSidebarOpen={sidebarOpen}
+                        onSectionChange={handleSectionChange}
+                      />
+                    </div>
+                    
+                    <div className={`fixed right-0 top-16 bottom-0 transition-all duration-300 bg-background z-20 border-l overflow-hidden ${
+                      isChatOpen ? 'w-full sm:w-96 lg:w-80' : 'w-0'
+                    }`}>
+                      {isChatOpen && (
+                        <div className="h-full flex flex-col">
+                          <div className="px-4 py-3 border-b flex justify-between items-center bg-muted/20">
+                            <h3 className="font-semibold">AI学習サポート</h3>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => setIsChatOpen(false)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          
+                          <LearningChat 
+                            onComplete={handleChatComplete}
+                            moduleDetail={moduleDetail}
+                            sessionType={chatSessionType}
+                            sectionId={currentSectionId}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </LearningChatProvider>
+                </div>
+              )}
             </div>
           </div>
-          <Footer />
+        </SidebarProvider>
+      </div>
+      
+      {!isChatOpen && (
+        <div className="fixed bottom-6 right-6">
+          <Button 
+            onClick={() => setIsChatOpen(true)}
+            size="lg"
+            className="rounded-full h-14 w-14 shadow-md p-0"
+          >
+            <Bot className="h-6 w-6" />
+            <span className="sr-only">AIサポートを開く</span>
+          </Button>
         </div>
-      </SidebarProvider>
-    </LearningChatProvider>
+      )}
+      
+      <Footer />
+    </div>
   );
 };
 
