@@ -70,7 +70,7 @@ const Navbar = () => {
         </NavLink>
 
         {/* Desktop Nav - Ensure enough space, potentially reduce space-x if needed */}
-        <nav className="hidden md:flex flex-1 items-center space-x-6">
+        <nav className="hidden md:flex flex-1 items-center space-x-4">
           {navItems.map((item) => (
             <NavLink
               key={item.path}
@@ -87,7 +87,7 @@ const Navbar = () => {
         </nav>
 
         {/* Auth Buttons / User Menu - Ensure it doesn't overlap */}
-        <div className="hidden md:flex items-center space-x-2">
+        <div className="hidden md:flex items-center space-x-1">
           {isLoggedIn ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

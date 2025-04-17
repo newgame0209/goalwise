@@ -278,10 +278,10 @@ const ModuleViewer = () => {
     console.log('ModuleViewer: カリキュラムの取得を開始します - ユーザーID:', user.id);
 
     try {
-      const { data, error } = await supabase
-        .from('user_curriculum')
-        .select('curriculum_data')
-        .eq('user_id', user.id)
+        const { data, error } = await supabase
+          .from('user_curriculum')
+          .select('curriculum_data')
+          .eq('user_id', user.id)
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
@@ -307,7 +307,7 @@ const ModuleViewer = () => {
         if (targetModuleId) {
           setActiveModule(targetModuleId);
           console.log('ModuleViewer: アクティブモジュールを設定:', targetModuleId);
-        } else {
+          } else {
           console.log('ModuleViewer: 有効なモジュールが見つかりません');
           setLoadingState(LoadingState.NO_DATA);
         }
@@ -327,10 +327,10 @@ const ModuleViewer = () => {
   // 初回マウント時、またはユーザー変更時にカリキュラムを取得
   useEffect(() => {
     if (user && !authLoading) {
-      fetchCurriculum();
+    fetchCurriculum();
     }
   }, [user, authLoading, fetchCurriculum]);
-
+  
   // アクティブモジュールが変更された時の処理
   useEffect(() => {
     if (!activeModule || !curriculum) return;
@@ -533,7 +533,7 @@ const ModuleViewer = () => {
   const handleModuleChange = (moduleId: string) => {
     console.log('handleModuleChange called with:', moduleId);
     setActiveModule(moduleId);
-
+    
     if (isMobile) {
       setSidebarOpen(false);
     }
@@ -622,7 +622,7 @@ const ModuleViewer = () => {
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
   };
-
+  
   // タブ切り替え時の処理
   const handleTabChange = (value: string) => {
     setActiveTab(value);
@@ -657,7 +657,7 @@ const ModuleViewer = () => {
         );
 
       case LoadingState.ERROR:
-        return (
+  return (
           <ErrorState
             onRetry={() => generateModuleContent(currentModule)} // currentModuleを渡す
             errorType={errorType}
@@ -742,9 +742,9 @@ const ModuleViewer = () => {
             {/* MaterialContent に Props を正しく渡す */}
             <TabsContent value="content" className="flex-1 overflow-auto px-0">
               {/* MaterialContent に渡す props を修正 */}
-              <MaterialContent
+              <MaterialContent 
                   moduleDetail={moduleDetail}
-                  onStartPractice={handleStartPractice}
+                onStartPractice={handleStartPractice}
                   // activeModule, currentModule, toggleSidebar, isSidebarOpen, onSectionChange は不要かも？
                   // MaterialContent の実装に合わせて調整が必要
               />
@@ -833,7 +833,7 @@ const ModuleViewer = () => {
               {/* メインコンテンツエリア */}
               <main className="flex-1 overflow-y-auto w-full pb-16"> {/* overflow-y-auto */}
                  {/* コンテンツの左右に適切なパディング/マージンを設定 */}
-                 <div className="container mx-auto px-4 md:px-6 lg:px-8 py-6 max-w-7xl"> {/* max-w を調整 */}
+                 <div className="container mx-auto px-4 md:px-6 lg:px-8 py-6"> 
                       {renderContent()}
                  </div>
               </main>
@@ -881,7 +881,7 @@ const ModuleViewer = () => {
                      </div>
                  )}
              </div>
-            </div>
+          </div>
           </SidebarProvider>
         </div>
         <Footer />
