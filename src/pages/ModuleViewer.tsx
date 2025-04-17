@@ -213,6 +213,41 @@ const ModuleViewer = () => {
     }
   };
 
+  // 進捗情報を取得
+  const fetchProgressData = async (moduleId: string) => {
+    if (!user) return;
+    
+    try {
+      console.log('進捗情報の取得を開始します', { userId: user.id, moduleId });
+      const { data, error } = await supabase
+        .from('learning_progress')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('module_id', moduleId)
+        .eq('session_type', 'content:1')
+        .limit(1);
+      
+      if (error) {
+        console.error('進捗データ取得エラー:', error);
+        return;
+      }
+      
+      if (data && data.length > 0) {
+        const progressData = data[0];
+        console.log('進捗データを取得しました:', progressData);
+        // 進捗状態を更新
+        setProgress(prev => ({
+          ...prev,
+          [moduleId]: progressData.completion_percentage || 0
+        }));
+      } else {
+        console.log('進捗データなし、新規レコードが必要です');
+      }
+    } catch (error) {
+      console.error('進捗データ取得エラー:', error);
+    }
+  };
+
   // カリキュラムデータを取得
   useEffect(() => {
     const fetchCurriculum = async () => {
@@ -298,6 +333,7 @@ const ModuleViewer = () => {
           
           // 進捗情報を取得
           try {
+            console.log('進捗情報を取得します', { userId: user?.id, moduleId: currentModule.id });
             const { data: progressData, error: progressError } = await supabase
               .from('learning_progress')
               .select('*')
@@ -306,12 +342,17 @@ const ModuleViewer = () => {
               .eq('session_type', 'content:1')
               .limit(1);
             
-            if (progressData && progressData.length > 0 && !progressError) {
+            if (progressError) {
+              console.error('進捗データ取得エラー:', progressError);
+            } else if (progressData && progressData.length > 0) {
+              console.log('進捗データを取得しました:', progressData[0]);
               // 個別のセクションの進捗を更新
               setProgress(prev => ({
                 ...prev,
                 [currentModule.id]: progressData[0].completion_percentage || 0
               }));
+            } else {
+              console.log('進捗データなし、新規レコードが必要です');
             }
           } catch (progressError) {
             console.error('進捗データ取得エラー:', progressError);
