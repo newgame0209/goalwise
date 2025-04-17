@@ -10,21 +10,32 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LearningPlan from './LearningPlan';
 import { getLearningPlanData } from '@/utils/learning-plan-data';
 import { CurriculumStructure } from '@/services/openai';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { Circle } from 'lucide-react';
 
-interface MaterialSidebarProps {
-  activeModule: string;
-  onModuleChange: (moduleId: string) => void;
-  progress: {
-    introduction: number;
-    theory: number;
-    examples: number;
-    practice: number;
-    [key: string]: number; // インデックスシグネチャを追加
-  };
-  curriculumModules?: CurriculumStructure['modules'];
+interface Module {
+  id: string;
+  title: string;
+  // 必要に応じて他のプロパティを追加
 }
 
-const MaterialSidebar = ({ activeModule, onModuleChange, progress, curriculumModules }: MaterialSidebarProps) => {
+interface MaterialSidebarProps {
+  activeModule: string | null;
+  onModuleChange: (moduleId: string) => void;
+  progress: { [key: string]: number }; // 進捗データの型
+  curriculumModules: Module[] | undefined;
+  isOpen: boolean; // isOpen プロパティを追加
+}
+
+const MaterialSidebar: React.FC<MaterialSidebarProps> = ({
+  activeModule,
+  onModuleChange,
+  progress,
+  curriculumModules,
+  isOpen
+}) => {
   const [viewMode, setViewMode] = useState<string>('modules');
   // プログレスの平均値を計算
   const progressValues = Object.values(progress);
@@ -84,7 +95,7 @@ const MaterialSidebar = ({ activeModule, onModuleChange, progress, curriculumMod
     : 'データ分析の基礎';
 
   return (
-    <Sidebar variant="inset">
+    <Sidebar variant="inset" className={cn(isOpen ? '' : 'hidden')}>
       <SidebarHeader className="p-4">
         <div className="flex flex-col space-y-2">
           <h2 className="text-xl font-semibold">{sidebarTitle}</h2>
