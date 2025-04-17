@@ -928,11 +928,12 @@ export const generateModuleDetail = async (
     maxRetries?: number;
     retryDelay?: number;
     onProgress?: (status: string, progress: number, estimatedTime?: number) => void;
+    userProfile?: any; // ユーザープロファイル情報を追加
   } = {}
 ): Promise<ModuleDetail> => {
   const { maxRetries = 3 } = options;
   let { retryDelay = 1000 } = options;
-  const { onProgress } = options;
+  const { onProgress, userProfile } = options;
   let retries = 0;
   
   // 進捗状況を報告するヘルパー関数
@@ -940,6 +941,75 @@ export const generateModuleDetail = async (
     if (onProgress) {
       onProgress(status, progress, estimatedTime);
     }
+  };
+  
+  // ユーザープロファイルに基づいてカスタマイズされたシステムプロンプトを作成
+  const createPersonalizedPrompt = (module: any, profileData: any) => {
+    if (!profileData) {
+      return SYSTEM_PROMPT_MODULE_DETAIL; // プロファイルがない場合は既存プロンプトを使用
+    }
+    
+    // プロファイルデータの抽出処理
+    const extractProfileInfo = (data: any) => {
+      try {
+        const profile = typeof data === 'string' ? JSON.parse(data) : data;
+        
+        // 学習目的を見つける
+        const goalAnswer = profile.answers?.find((a: any) => 
+          a.question.includes('目的') || a.question.includes('ゴール')
+        );
+        
+        // スキルレベルを見つける
+        const skillAnswer = profile.answers?.find((a: any) => 
+          a.question.includes('スキルレベル') || a.question.includes('経験')
+        );
+        
+        // 興味のある分野を見つける
+        const interestAnswer = profile.answers?.find((a: any) => 
+          a.question.includes('興味') || a.question.includes('分野')
+        );
+        
+        return {
+          goal: goalAnswer?.answer || '',
+          level: skillAnswer?.answer || '初級者',
+          interest: interestAnswer?.answer || '',
+          interests: profile.interests || [],
+          learningStyle: profile.learningStyle || [],
+          timeCommitment: profile.timeCommitment || '',
+        };
+      } catch (e) {
+        console.error('プロファイルデータの解析エラー:', e);
+        return {};
+      }
+    };
+    
+    const profileInfo = extractProfileInfo(profileData);
+    
+    // パーソナライズされたプロンプトを生成
+    return `
+あなたは経験豊富な教材開発者です。以下のユーザープロファイルとモジュール情報に基づいて、
+ユーザーにパーソナライズされた教材コンテンツを作成してください。
+
+【ユーザープロファイル】
+学習目的: ${profileInfo.goal || '不明'}
+現在のスキルレベル: ${profileInfo.level || '初級者'}
+興味のある分野: ${profileInfo.interest || (Array.isArray(profileInfo.interests) ? profileInfo.interests.join(', ') : '不明')}
+学習スタイル: ${Array.isArray(profileInfo.learningStyle) ? profileInfo.learningStyle.join(', ') : '不明'}
+学習に割ける時間: ${profileInfo.timeCommitment || '不明'}
+
+上記のプロファイルを考慮したカスタマイズポイント:
+1. ${profileInfo.level || '初級者'}レベルに適した説明の詳しさと例示
+2. ${profileInfo.goal || '学習'}に関連する実用的で具体的な例
+3. ${profileInfo.interest || '実践的な例や応用'}に関連した応用事例
+4. ${profileInfo.timeCommitment === 'low' 
+     ? '短時間で効率的に学べるよう、簡潔かつ要点を絞ったコンテンツ' 
+     : profileInfo.timeCommitment === 'high' 
+       ? '深く詳細な学習ができる充実したコンテンツ' 
+       : 'バランスの取れた学習コンテンツ'}
+
+【モジュール情報】
+${SYSTEM_PROMPT_MODULE_DETAIL.split('あなたは経験豊富な教材開発者です。')[1]}
+`;
   };
   
   // 開始を通知
@@ -953,7 +1023,10 @@ export const generateModuleDetail = async (
       const params = {
         model: "gpt-4o",
         messages: [
-          { role: "system", content: SYSTEM_PROMPT_MODULE_DETAIL },
+          { 
+            role: "system", 
+            content: createPersonalizedPrompt(curriculumModule, userProfile)
+          },
           {
             role: "user",
             content: JSON.stringify({
@@ -961,10 +1034,16 @@ export const generateModuleDetail = async (
               moduleDescription: curriculumModule.description,
               learningGoals: curriculumModule.learning_objectives || [],
               moduleId: curriculumModule.id,
-              // 必要に応じて追加のメタデータを含める
               difficulty: curriculumModule.difficulty || "intermediate",
-              // estimatedDuration: curriculumModule.estimated_duration, // 必要なら追加
-              // skills_covered: curriculumModule.skills_covered // 必要なら追加
+              // カリキュラム全体のコンテキスト情報を追加
+              curriculumContext: {
+                title: curriculumModule.curriculum_title || '',
+                description: curriculumModule.curriculum_description || '',
+                modulePosition: curriculumModule.module_index || 0,
+                totalModules: curriculumModule.total_modules || 1,
+                previousModule: curriculumModule.previous_module ? curriculumModule.previous_module.title : null,
+                nextModule: curriculumModule.next_module ? curriculumModule.next_module.title : null
+              }
             })
           }
         ],

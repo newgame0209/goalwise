@@ -185,6 +185,34 @@ const ModuleViewer = () => {
   const [currentSectionId, setCurrentSectionId] = useState<string | undefined>(undefined);
   const [errorType, setErrorType] = useState<'network' | 'api' | 'auth' | 'general' | 'timeout'>('general');
 
+  // ユーザープロファイルデータを取得する関数
+  const fetchUserProfileData = async (userId: string) => {
+    try {
+      console.log('ModuleViewer: ユーザープロファイルデータ取得開始');
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('profile_data, profile_completed')
+        .eq('id', userId)
+        .single();
+      
+      if (error) {
+        console.error('ModuleViewer: プロファイル取得エラー:', error);
+        return null;
+      }
+      
+      if (!data || !data.profile_completed) {
+        console.log('ModuleViewer: プロファイルが未完了または存在しません');
+        return null;
+      }
+      
+      console.log('ModuleViewer: ユーザープロファイルデータ取得成功');
+      return data.profile_data;
+    } catch (err) {
+      console.error('ModuleViewer: プロファイル取得中の例外:', err);
+      return null;
+    }
+  };
+
   // カリキュラムデータを取得
   useEffect(() => {
     const fetchCurriculum = async () => {
@@ -209,19 +237,63 @@ const ModuleViewer = () => {
           
           // モジュールIDが指定されている場合は該当するモジュールを選択
           if (moduleId) {
-            const module = curriculumData.modules.find(m => m.id === moduleId);
-            if (module) {
-              setCurrentModule(module);
-              console.log('ModuleViewer: 現在のモジュールを設定:', module);
+            const moduleIndex = curriculumData.modules.findIndex(m => m.id === moduleId);
+            if (moduleIndex >= 0) {
+              // モジュールにカリキュラムコンテキスト情報を追加
+              const enhancedModule = {
+                ...curriculumData.modules[moduleIndex],
+                curriculum_title: curriculumData.title || '',
+                curriculum_description: curriculumData.description || '',
+                module_index: moduleIndex,
+                total_modules: curriculumData.modules.length,
+                // 前後のモジュール情報を追加
+                previous_module: moduleIndex > 0 ? {
+                  id: curriculumData.modules[moduleIndex - 1].id,
+                  title: curriculumData.modules[moduleIndex - 1].title
+                } : null,
+                next_module: moduleIndex < curriculumData.modules.length - 1 ? {
+                  id: curriculumData.modules[moduleIndex + 1].id,
+                  title: curriculumData.modules[moduleIndex + 1].title
+                } : null
+              };
+              
+              setCurrentModule(enhancedModule);
+              console.log('ModuleViewer: 拡張された現在のモジュール情報を設定:', enhancedModule);
             } else {
               // モジュールが見つからない場合は最初のモジュールを選択
-              setCurrentModule(curriculumData.modules[0]);
-              console.log('ModuleViewer: 指定されたモジュールが見つからないため最初のモジュールを選択:', curriculumData.modules[0]);
+              const enhancedFirstModule = {
+                ...curriculumData.modules[0],
+                curriculum_title: curriculumData.title || '',
+                curriculum_description: curriculumData.description || '',
+                module_index: 0,
+                total_modules: curriculumData.modules.length,
+                previous_module: null,
+                next_module: curriculumData.modules.length > 1 ? {
+                  id: curriculumData.modules[1].id,
+                  title: curriculumData.modules[1].title
+                } : null
+              };
+              
+              setCurrentModule(enhancedFirstModule);
+              console.log('ModuleViewer: 指定されたモジュールが見つからないため最初のモジュールを選択:', enhancedFirstModule);
             }
           } else {
             // モジュールIDが指定されていない場合は最初のモジュールを選択
-            setCurrentModule(curriculumData.modules[0]);
-            console.log('ModuleViewer: モジュールIDが指定されていないため最初のモジュールを選択:', curriculumData.modules[0]);
+            const enhancedFirstModule = {
+              ...curriculumData.modules[0],
+              curriculum_title: curriculumData.title || '',
+              curriculum_description: curriculumData.description || '',
+              module_index: 0,
+              total_modules: curriculumData.modules.length,
+              previous_module: null,
+              next_module: curriculumData.modules.length > 1 ? {
+                id: curriculumData.modules[1].id,
+                title: curriculumData.modules[1].title
+              } : null
+            };
+            
+            setCurrentModule(enhancedFirstModule);
+            console.log('ModuleViewer: モジュールIDが指定されていないため最初のモジュールを選択:', enhancedFirstModule);
           }
           
           // 進捗情報を取得
@@ -359,6 +431,13 @@ const ModuleViewer = () => {
         console.log('ModuleViewer: 既存のモジュール詳細がありません。新規生成を開始します');
       }
       
+      // ユーザープロファイルデータを取得
+      let userProfileData = null;
+      if (user) {
+        userProfileData = await fetchUserProfileData(user.id);
+        console.log('ModuleViewer: ユーザープロファイルデータ:', userProfileData ? 'データあり' : 'データなし');
+      }
+      
       // ステップ2: モジュール詳細が存在しない場合は生成
       setGenerationStatus({
         ...generationStatus,
@@ -390,7 +469,8 @@ const ModuleViewer = () => {
         { 
           maxRetries: 2, 
           retryDelay: 2000,
-          onProgress: progressCallback
+          onProgress: progressCallback,
+          userProfile: userProfileData // ユーザープロファイルデータを追加
         }
       );
       
