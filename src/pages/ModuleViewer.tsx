@@ -824,7 +824,7 @@ const ModuleViewer = () => {
                  variant="outline"
                  size="icon" // アイコンボタンに
                  onClick={toggleSidebar}
-                 className={`absolute left-4 top-4 z-30 ${isMobile ? 'block' : ''}`} // モバイルでは常に表示
+                 className={`absolute left-4 top-4 z-30 ${isMobile ? 'block' : 'hidden'}`} // モバイルでは常に表示、デスクトップでは hidden に変更
                  aria-label={sidebarOpen ? "サイドバーを閉じる" : "サイドバーを開く"}
                >
                   {sidebarOpen ? <X className="h-4 w-4" /> : <ListTree className="h-4 w-4" /> }

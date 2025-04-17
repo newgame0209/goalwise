@@ -59,8 +59,8 @@ const Navbar = () => {
       }`}
     >
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl flex items-center justify-between">
-        {/* Logo */}
-        <NavLink to="/" className="relative z-10 flex items-center">
+        {/* Logo - Add margin-right for spacing */}
+        <NavLink to="/" className="relative z-10 flex items-center mr-6">
           <div className="flex items-center gap-2">
             <div className="bg-primary text-primary-foreground p-1 rounded-md">
               <BookOpen className="h-5 w-5" />
@@ -69,14 +69,14 @@ const Navbar = () => {
           </div>
         </NavLink>
 
-        {/* Desktop Nav */}
-        <nav className="hidden md:flex items-center space-x-8">
+        {/* Desktop Nav - Ensure enough space, potentially reduce space-x if needed */}
+        <nav className="hidden md:flex flex-1 items-center space-x-6">
           {navItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
               className={({ isActive }) =>
-                `font-medium transition-colors hover:text-primary ${
+                `font-medium transition-colors hover:text-primary whitespace-nowrap ${
                   isActive ? 'text-primary' : 'text-foreground/80'
                 }`
               }
@@ -86,8 +86,8 @@ const Navbar = () => {
           ))}
         </nav>
 
-        {/* Auth Buttons / User Menu */}
-        <div className="hidden md:flex items-center space-x-4">
+        {/* Auth Buttons / User Menu - Ensure it doesn't overlap */}
+        <div className="hidden md:flex items-center space-x-2">
           {isLoggedIn ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -120,7 +120,7 @@ const Navbar = () => {
               <Button variant="ghost" asChild>
                 <NavLink to="/login">ログイン</NavLink>
               </Button>
-              <Button asChild className="button-hover">
+              <Button asChild className="button-hover whitespace-nowrap">
                 <NavLink to="/signup">無料で始める</NavLink>
               </Button>
             </>
