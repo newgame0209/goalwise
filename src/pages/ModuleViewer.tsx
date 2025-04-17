@@ -218,11 +218,11 @@ const ModuleViewer = () => {
     if (!user) return;
     
     try {
-      console.log('進捗情報の取得を開始します', { userId: user.id, moduleId });
+      console.log('進捗情報を取得します', { userId: user?.id, moduleId });
       const { data, error } = await supabase
         .from('learning_progress')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', user?.id)
         .eq('module_id', moduleId)
         .eq('session_type', 'content:1')
         .limit(1);
@@ -233,15 +233,37 @@ const ModuleViewer = () => {
       }
       
       if (data && data.length > 0) {
-        const progressData = data[0];
-        console.log('進捗データを取得しました:', progressData);
+        console.log('進捗データを取得しました:', data[0]);
         // 進捗状態を更新
         setProgress(prev => ({
           ...prev,
-          [moduleId]: progressData.completion_percentage || 0
+          [moduleId]: data[0].completion_percentage || 0
         }));
       } else {
         console.log('進捗データなし、新規レコードが必要です');
+        // 進捗データがない場合は初期データを作成
+        try {
+          const { error: insertError } = await supabase
+            .from('learning_progress')
+            .insert({
+              user_id: user.id,
+              module_id: moduleId,
+              session_type: 'content:1',
+              completion_percentage: 0,
+              duration_minutes: 0,
+              completed: false,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+            
+          if (insertError) {
+            console.error('進捗データ初期化エラー:', insertError);
+          } else {
+            console.log('進捗データを初期化しました');
+          }
+        } catch (insertErr) {
+          console.error('進捗データ初期化中のエラー:', insertErr);
+        }
       }
     } catch (error) {
       console.error('進捗データ取得エラー:', error);
@@ -255,124 +277,76 @@ const ModuleViewer = () => {
       
       try {
         setLoadingState(LoadingState.LOADING);
+        console.log('ModuleViewer: カリキュラムの取得を開始します - ユーザーID:', user.id);
+        
+        // カリキュラムデータを取得
         const { data, error } = await supabase
           .from('user_curriculum')
           .select('curriculum_data')
           .eq('user_id', user.id)
-          .single();
+          .limit(1);
           
         if (error) {
-          throw error;
+          console.error('ModuleViewer: カリキュラム取得エラー:', error);
+          setErrorMessage(error.message);
+          setErrorType('api');
+          setLoadingState(LoadingState.ERROR);
+          return;
         }
         
-        if (data && data.curriculum_data) {
-          // 型キャストを安全に行うため、まず unknown に変換
-          const curriculumData = data.curriculum_data as unknown as CurriculumStructure;
-          setCurriculum(curriculumData);
+        if (data && data.length > 0 && data[0].curriculum_data) {
+          console.log('ModuleViewer: カリキュラムデータを取得しました');
+          // カリキュラムデータをセット
+          const typedData = data[0].curriculum_data as CurriculumStructure;
+          setCurriculum(typedData);
           
           // モジュールIDが指定されている場合は該当するモジュールを選択
-          if (moduleId) {
-            const moduleIndex = curriculumData.modules.findIndex(m => m.id === moduleId);
-            if (moduleIndex >= 0) {
-              // モジュールにカリキュラムコンテキスト情報を追加
-              const enhancedModule = {
-                ...curriculumData.modules[moduleIndex],
-                curriculum_title: curriculumData.title || '',
-                curriculum_description: curriculumData.description || '',
-                module_index: moduleIndex,
-                total_modules: curriculumData.modules.length,
-                // 前後のモジュール情報を追加
-                previous_module: moduleIndex > 0 ? {
-                  id: curriculumData.modules[moduleIndex - 1].id,
-                  title: curriculumData.modules[moduleIndex - 1].title
-                } : null,
-                next_module: moduleIndex < curriculumData.modules.length - 1 ? {
-                  id: curriculumData.modules[moduleIndex + 1].id,
-                  title: curriculumData.modules[moduleIndex + 1].title
-                } : null
-              };
-              
-              setCurrentModule(enhancedModule);
-              console.log('ModuleViewer: 拡張された現在のモジュール情報を設定:', enhancedModule);
-            } else {
-              // モジュールが見つからない場合は最初のモジュールを選択
-              const enhancedFirstModule = {
-                ...curriculumData.modules[0],
-                curriculum_title: curriculumData.title || '',
-                curriculum_description: curriculumData.description || '',
-                module_index: 0,
-                total_modules: curriculumData.modules.length,
-                previous_module: null,
-                next_module: curriculumData.modules.length > 1 ? {
-                  id: curriculumData.modules[1].id,
-                  title: curriculumData.modules[1].title
-                } : null
-              };
-              
-              setCurrentModule(enhancedFirstModule);
-              console.log('ModuleViewer: 指定されたモジュールが見つからないため最初のモジュールを選択:', enhancedFirstModule);
+          let targetModuleId = moduleId;
+          let selectedModule = null;
+          
+          if (targetModuleId) {
+            console.log('ModuleViewer: 指定されたモジュールIDを検索:', targetModuleId);
+            selectedModule = typedData.modules.find(m => m.id === targetModuleId);
+          }
+          
+          // モジュールIDが指定されていないか見つからない場合は最初のモジュールを選択
+          if (!selectedModule && typedData.modules && typedData.modules.length > 0) {
+            console.log('ModuleViewer: 最初のモジュールを選択します');
+            selectedModule = typedData.modules[0];
+            targetModuleId = selectedModule.id;
+          }
+          
+          if (selectedModule) {
+            console.log('ModuleViewer: 現在のモジュール情報を設定します:', selectedModule);
+            setCurrentModule(selectedModule);
+            setActiveModule(targetModuleId || '');
+            
+            // 進捗データを取得
+            if (targetModuleId) {
+              await fetchProgressData(targetModuleId);
             }
+            
+            // モジュール詳細の生成処理は一度だけ行う
+            setTimeout(() => {
+              generateModuleContent();
+            }, 500);
           } else {
-            // モジュールIDが指定されていない場合は最初のモジュールを選択
-            const enhancedFirstModule = {
-              ...curriculumData.modules[0],
-              curriculum_title: curriculumData.title || '',
-              curriculum_description: curriculumData.description || '',
-              module_index: 0,
-              total_modules: curriculumData.modules.length,
-              previous_module: null,
-              next_module: curriculumData.modules.length > 1 ? {
-                id: curriculumData.modules[1].id,
-                title: curriculumData.modules[1].title
-              } : null
-            };
-            
-            setCurrentModule(enhancedFirstModule);
-            console.log('ModuleViewer: モジュールIDが指定されていないため最初のモジュールを選択:', enhancedFirstModule);
+            console.log('ModuleViewer: モジュールが見つかりません');
+            setLoadingState(LoadingState.NO_DATA);
           }
-          
-          // 進捗情報を取得
-          try {
-            console.log('進捗情報を取得します', { userId: user?.id, moduleId: currentModule.id });
-            const { data: progressData, error: progressError } = await supabase
-              .from('learning_progress')
-              .select('*')
-              .eq('user_id', user?.id)
-              .eq('module_id', currentModule.id)
-              .eq('session_type', 'content:1')
-              .limit(1);
-            
-            if (progressError) {
-              console.error('進捗データ取得エラー:', progressError);
-            } else if (progressData && progressData.length > 0) {
-              console.log('進捗データを取得しました:', progressData[0]);
-              // 個別のセクションの進捗を更新
-              setProgress(prev => ({
-                ...prev,
-                [currentModule.id]: progressData[0].completion_percentage || 0
-              }));
-            } else {
-              console.log('進捗データなし、新規レコードが必要です');
-            }
-          } catch (progressError) {
-            console.error('進捗データ取得エラー:', progressError);
-          }
-          
-          // モジュールデータを取得したらすぐにモジュール詳細の生成を開始
-          setTimeout(() => {
-            generateModuleContent();
-          }, 500);
         } else {
+          console.log('ModuleViewer: カリキュラムデータが見つかりません');
+          setErrorMessage("カリキュラムデータが見つかりません。プロファイルの設定を完了してください。");
           setLoadingState(LoadingState.NO_DATA);
-          setErrorMessage('カリキュラムデータが見つかりませんでした。まずはプロファイリングを完了させてください。');
         }
-      } catch (error) {
-        console.error('カリキュラムデータ取得エラー:', error);
+      } catch (err) {
+        console.error('ModuleViewer: カリキュラム取得中にエラーが発生しました:', err);
+        setErrorMessage(err instanceof Error ? err.message : 'カリキュラムの取得中にエラーが発生しました');
+        setErrorType('general');
         setLoadingState(LoadingState.ERROR);
-        setErrorMessage('カリキュラムデータの取得に失敗しました。');
       }
     };
-
+    
     fetchCurriculum();
   }, [user, moduleId]);
   
