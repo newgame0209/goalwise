@@ -876,9 +876,37 @@ const generateFallbackCurriculum = (profileData: any): CurriculumStructure => {
   }
 };
 
-// モジュール詳細情報を生成するためのシステムプロンプト
-const SYSTEM_PROMPT_MODULE_DETAIL = `
-あなたは経験豊富な教材開発者です。与えられたモジュール情報に基づいて、学習者にとって魅力的で理解しやすい詳細な教材コンテンツを作成してください。
+// ユーザープロファイル情報を考慮したシステムプロンプトの生成
+const createPersonalizedPrompt = (module: any, profileData: any) => {
+  if (!profileData) {
+    return SYSTEM_PROMPT_MODULE_DETAIL; // プロファイルがない場合は既存プロンプトを使用
+  }
+  
+  // パーソナライズされたプロンプトを生成
+  return `
+あなたは経験豊富な教材開発者です。以下のユーザープロファイルとモジュール情報に基づいて、
+ユーザーにパーソナライズされた教材コンテンツを作成してください。
+
+【ユーザープロファイル】
+学習目的: ${profileData.goal || '不明'}
+現在のスキルレベル: ${profileData.level || '初級者'}
+興味のある分野: ${Array.isArray(profileData.interests) ? profileData.interests.join(', ') : '不明'}
+学習スタイル: ${Array.isArray(profileData.learningStyle) ? profileData.learningStyle.join(', ') : '不明'}
+学習に割ける時間: ${profileData.timeCommitment || '不明'}
+苦手な分野/課題: ${profileData.challenges || '特になし'}
+
+上記のプロファイルを考慮したカスタマイズポイント:
+1. ${profileData.level || '初級者'}レベルに適した説明の詳しさと例示
+2. ${profileData.goal || '学習'}に関連する実用的で具体的な例
+3. ${Array.isArray(profileData.interests) && profileData.interests.length > 0 
+     ? profileData.interests.join('と') + 'に関連した例や応用' 
+     : '実践的な例や応用'}
+4. ${profileData.timeCommitment === 'low' 
+     ? '短時間で効率的に学べるよう、簡潔かつ要点を絞ったコンテンツ' 
+     : profileData.timeCommitment === 'high' 
+       ? '深く詳細な学習ができる充実したコンテンツ' 
+       : 'バランスの取れた学習コンテンツ'}
+5. ${profileData.challenges ? profileData.challenges + 'に配慮した丁寧な説明' : '基本概念の丁寧な説明'}
 
 教材コンテンツは、以下の要素を含む必要があります:
 1.  **概要説明(content)**: モジュールの主要な概念やトピックを詳細に解説します。コード例や図解も適宜含めてください。
@@ -920,6 +948,7 @@ const SYSTEM_PROMPT_MODULE_DETAIL = `
 
 マークダウンや説明文は含めず、JSONオブジェクトのみを返してください。
 `;
+};
 
 // モジュール詳細情報を生成するための関数
 export const generateModuleDetail = async (
@@ -943,75 +972,6 @@ export const generateModuleDetail = async (
     }
   };
   
-  // ユーザープロファイルに基づいてカスタマイズされたシステムプロンプトを作成
-  const createPersonalizedPrompt = (module: any, profileData: any) => {
-    if (!profileData) {
-      return SYSTEM_PROMPT_MODULE_DETAIL; // プロファイルがない場合は既存プロンプトを使用
-    }
-    
-    // プロファイルデータの抽出処理
-    const extractProfileInfo = (data: any) => {
-      try {
-        const profile = typeof data === 'string' ? JSON.parse(data) : data;
-        
-        // 学習目的を見つける
-        const goalAnswer = profile.answers?.find((a: any) => 
-          a.question.includes('目的') || a.question.includes('ゴール')
-        );
-        
-        // スキルレベルを見つける
-        const skillAnswer = profile.answers?.find((a: any) => 
-          a.question.includes('スキルレベル') || a.question.includes('経験')
-        );
-        
-        // 興味のある分野を見つける
-        const interestAnswer = profile.answers?.find((a: any) => 
-          a.question.includes('興味') || a.question.includes('分野')
-        );
-        
-        return {
-          goal: goalAnswer?.answer || '',
-          level: skillAnswer?.answer || '初級者',
-          interest: interestAnswer?.answer || '',
-          interests: profile.interests || [],
-          learningStyle: profile.learningStyle || [],
-          timeCommitment: profile.timeCommitment || '',
-        };
-      } catch (e) {
-        console.error('プロファイルデータの解析エラー:', e);
-        return {};
-      }
-    };
-    
-    const profileInfo = extractProfileInfo(profileData);
-    
-    // パーソナライズされたプロンプトを生成
-    return `
-あなたは経験豊富な教材開発者です。以下のユーザープロファイルとモジュール情報に基づいて、
-ユーザーにパーソナライズされた教材コンテンツを作成してください。
-
-【ユーザープロファイル】
-学習目的: ${profileInfo.goal || '不明'}
-現在のスキルレベル: ${profileInfo.level || '初級者'}
-興味のある分野: ${profileInfo.interest || (Array.isArray(profileInfo.interests) ? profileInfo.interests.join(', ') : '不明')}
-学習スタイル: ${Array.isArray(profileInfo.learningStyle) ? profileInfo.learningStyle.join(', ') : '不明'}
-学習に割ける時間: ${profileInfo.timeCommitment || '不明'}
-
-上記のプロファイルを考慮したカスタマイズポイント:
-1. ${profileInfo.level || '初級者'}レベルに適した説明の詳しさと例示
-2. ${profileInfo.goal || '学習'}に関連する実用的で具体的な例
-3. ${profileInfo.interest || '実践的な例や応用'}に関連した応用事例
-4. ${profileInfo.timeCommitment === 'low' 
-     ? '短時間で効率的に学べるよう、簡潔かつ要点を絞ったコンテンツ' 
-     : profileInfo.timeCommitment === 'high' 
-       ? '深く詳細な学習ができる充実したコンテンツ' 
-       : 'バランスの取れた学習コンテンツ'}
-
-【モジュール情報】
-${SYSTEM_PROMPT_MODULE_DETAIL.split('あなたは経験豊富な教材開発者です。')[1]}
-`;
-  };
-  
   // 開始を通知
   updateProgress("モジュール詳細の生成を準備中...", 5, 120); // 120秒目安
 
@@ -1025,7 +985,7 @@ ${SYSTEM_PROMPT_MODULE_DETAIL.split('あなたは経験豊富な教材開発者�
         messages: [
           { 
             role: "system", 
-            content: createPersonalizedPrompt(curriculumModule, userProfile)
+            content: createPersonalizedPrompt(curriculumModule, userProfile) 
           },
           {
             role: "user",
@@ -1034,6 +994,7 @@ ${SYSTEM_PROMPT_MODULE_DETAIL.split('あなたは経験豊富な教材開発者�
               moduleDescription: curriculumModule.description,
               learningGoals: curriculumModule.learning_objectives || [],
               moduleId: curriculumModule.id,
+              // 必要に応じて追加のメタデータを含める
               difficulty: curriculumModule.difficulty || "intermediate",
               // カリキュラム全体のコンテキスト情報を追加
               curriculumContext: {
@@ -1041,8 +1002,8 @@ ${SYSTEM_PROMPT_MODULE_DETAIL.split('あなたは経験豊富な教材開発者�
                 description: curriculumModule.curriculum_description || '',
                 modulePosition: curriculumModule.module_index || 0,
                 totalModules: curriculumModule.total_modules || 1,
-                previousModule: curriculumModule.previous_module ? curriculumModule.previous_module.title : null,
-                nextModule: curriculumModule.next_module ? curriculumModule.next_module.title : null
+                previousModule: curriculumModule.previous_module || null,
+                nextModule: curriculumModule.next_module || null
               }
             })
           }
@@ -1065,7 +1026,7 @@ ${SYSTEM_PROMPT_MODULE_DETAIL.split('あなたは経験豊富な教材開発者�
         temperature: params.temperature,
         maxTokens: params.max_tokens,
         responseFormat: params.response_format,
-        maxRetries: 0, // fetchChatCompletion側でリトライするため、ここではリトライしない
+        maxRetries: 0, // fetchChatCompletion側でリトライ
         timeout: 120000 // 2分のタイムアウト設定
       });
       
@@ -2077,3 +2038,48 @@ export const generateLearningQuestions = async (
   // ここには到達しないはずだが、TypeScriptの型チェックを満たすために追加
   throw new Error('質問の生成に失敗しました');
 };
+
+// モジュール詳細情報を生成するためのデフォルトシステムプロンプト
+const SYSTEM_PROMPT_MODULE_DETAIL = `
+あなたは経験豊富な教材開発者です。与えられたモジュール情報に基づいて、学習者にとって魅力的で理解しやすい詳細な教材コンテンツを作成してください。
+
+教材コンテンツは、以下の要素を含む必要があります:
+1.  **概要説明(content)**: モジュールの主要な概念やトピックを詳細に解説します。コード例や図解も適宜含めてください。
+2.  **具体例(examples)**: 理解を助けるための具体的なコード例やシナリオを複数提示してください。
+3.  **要約(summary)**: モジュールの重要なポイントを簡潔にまとめてください。
+4.  **キーポイント(keyPoints)**: 学習者が記憶すべき重要な用語や概念をリストアップしてください。
+5.  **練習問題(questions)**: 理解度を確認するための練習問題をいくつか作成してください。ヒントも添えてください。
+6.  **関連リソース(resources)**: さらに学習を深めるための高品質な外部リソース（ドキュメント、チュートリアル、記事など）を複数紹介してください。URL、タイトル、簡単な説明を含めてください。
+
+レスポンスは必ず以下のJSON形式に従ってください:
+{
+  "title": "モジュールのタイトル",
+  "description": "モジュールの詳細な説明",
+  "learningObjectives": ["学習目標1", "学習目標2"],
+  "prerequisites": ["前提知識1", "前提知識2"],
+  "estimatedDuration": "学習時間の目安 (例: '2時間')",
+  "difficulty": "難易度 ('beginner', 'intermediate', 'advanced')",
+  "category": "カテゴリ",
+  "content": [
+    {
+      "id": "section-1",
+      "title": "セクション1のタイトル",
+      "content": "セクション1の本文 (HTML形式可)",
+      "examples": [
+        {"title": "例1", "content": "例1の内容 (コードブロック等)"}
+      ],
+      "summary": "セクション1の要約",
+      "keyPoints": ["キーポイント1", "キーポイント2"],
+      "questions": [
+        {"question": "練習問題1", "hint": "ヒント1"}
+      ],
+      "resources": [
+        {"title": "リソース1", "url": "URL", "description": "説明"}
+      ]
+    }
+    // ... 他のセクション ...
+  ]
+}
+
+マークダウンや説明文は含めず、JSONオブジェクトのみを返してください。
+`;
