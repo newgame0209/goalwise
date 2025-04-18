@@ -2083,3 +2083,37 @@ const SYSTEM_PROMPT_MODULE_DETAIL = `
 
 マークダウンや説明文は含めず、JSONオブジェクトのみを返してください。
 `;
+
+// Text-to-Speech APIを使用して音声を生成する関数
+export const generateSpeech = async (text: string, voice: string = 'alloy'): Promise<ArrayBuffer> => {
+  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('APIキーが設定されていません。');
+  }
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'tts-1',
+        voice: voice, // 'alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'
+        input: text,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`OpenAI API エラー: ${response.status} ${errorBody}`);
+    }
+
+    return await response.arrayBuffer();
+  } catch (error) {
+    console.error('音声生成エラー:', error);
+    throw error;
+  }
+};

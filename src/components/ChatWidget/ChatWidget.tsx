@@ -411,6 +411,16 @@ export default function ChatWidget() {
     
     if (currentQuestion.type === 'freeform') {
       answer = data[currentQuestion.id];
+      
+      // 自由入力欄の検証を強化
+      if (!answer || answer.trim() === '' || answer.trim().length < 3) {
+        toast({
+          title: '入力が不足しています',
+          description: 'もう少し詳しく入力してください（3文字以上）',
+          variant: 'destructive',
+        });
+        return; // 処理を中止
+      }
     } else if (currentQuestion.type === 'select') {
       if (currentQuestion.id === 'learningStyle') {
         const selectedOptions = currentQuestion.options
@@ -480,7 +490,11 @@ export default function ChatWidget() {
               timestamp: new Date(),
             });
             
-            profileForm.resetField(nextQuestion.id as keyof ProfileQuestionnaireForm);
+            // 入力フィールドをリセット
+            profileForm.reset({
+              ...profileForm.getValues(),
+              [currentQuestion.id]: ''
+            });
           }, 1000);
         } else {
           setTimeout(() => {

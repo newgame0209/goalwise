@@ -1,11 +1,16 @@
-import { useState } from 'react';
-import { PlayCircle, BookOpen, Volume2, ExternalLink, CheckCircle, MessageCircle } from 'lucide-react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { PlayCircle, BookOpen, Volume2, ExternalLink, CheckCircle, MessageCircle, Pause, Menu } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ModuleDetail } from '@/services/openai';
+import { useToast } from "@/hooks/use-toast";
+import { generateSpeech } from '@/services/openai';
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useNavigate } from 'react-router-dom';
 
 interface MaterialContentProps {
   activeModule?: string;
@@ -18,7 +23,121 @@ interface MaterialContentProps {
 }
 
 const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentModule, toggleSidebar, isSidebarOpen, onSectionChange }: MaterialContentProps) => {
-  const [activeContentTab, setActiveContentTab] = useState("content");
+  const [activeTab, setActiveTab] = useState('introduction');
+  const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
+  const [useOpenAIVoice, setUseOpenAIVoice] = useState(true);
+  const [voiceType, setVoiceType] = useState('alloy');
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const speechSynthesis = window.speechSynthesis;
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  
+  // コンポーネントマウント時にSpeech APIをセットアップ
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (window.speechSynthesis) {
+        setSpeechSynthesis(window.speechSynthesis);
+      }
+      
+      // Audio要素の作成
+      audioRef.current = new Audio();
+      audioRef.current.addEventListener('ended', () => {
+        setCurrentlyPlayingId(null);
+      });
+    }
+    
+    return () => {
+      // クリーンアップ
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
+    };
+  }, []);
+  
+  const handleVoiceTypeChange = (value: string) => {
+    setVoiceType(value);
+  };
+  
+  // テキストから音声合成を実行する関数
+  const speakText = useCallback(async (text: string, sectionId: string) => {
+    // 現在再生中の音声があれば停止
+    if (currentlyPlayingId) {
+      if (utteranceRef.current) {
+        speechSynthesis?.cancel();
+        utteranceRef.current = null;
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      
+      if (currentlyPlayingId === sectionId) {
+        setCurrentlyPlayingId(null);
+        return;
+      }
+    }
+    
+    try {
+      if (useOpenAIVoice) {
+        setIsGeneratingAudio(true);
+        
+        // テキストからHTMLタグを除去
+        const plainText = text.replace(/<[^>]*>/g, '');
+        
+        // OpenAIの音声合成APIを使用
+        const audioData = await generateSpeech(plainText, voiceType);
+        const blob = new Blob([audioData], { type: 'audio/mpeg' });
+        const url = URL.createObjectURL(blob);
+        
+        if (audioRef.current) {
+          audioRef.current.src = url;
+          audioRef.current.play();
+          setCurrentlyPlayingId(sectionId);
+        }
+      } else if (speechSynthesis) {
+        // ブラウザの音声合成APIを使用
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'ja-JP';
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        
+        // 発話終了イベントを設定
+        utterance.onend = () => {
+          setCurrentlyPlayingId(null);
+          utteranceRef.current = null;
+        };
+        
+        // 音声合成を実行
+        speechSynthesis.speak(utterance);
+        utteranceRef.current = utterance;
+        setCurrentlyPlayingId(sectionId);
+      } else {
+        toast({
+          title: "音声合成エラー",
+          description: "お使いのブラウザは音声合成をサポートしていません。",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('音声合成エラー:', error);
+      toast({
+        title: "音声合成エラー",
+        description: "音声の生成中にエラーが発生しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingAudio(false);
+    }
+  }, [speechSynthesis, currentlyPlayingId, useOpenAIVoice, toast, voiceType]);
+  
+  const handleNextModule = () => {
+    if (currentModule?.next_module?.id) {
+      navigate(`/module/${currentModule.next_module.id}`);
+    }
+  };
   
   // モジュール詳細がまだ生成されていない場合は、デフォルトのコンテンツを表示
   if (!moduleDetail) {
@@ -47,84 +166,135 @@ const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentM
     
     return (
       <div className="space-y-8">
-        {moduleDetail.content.map((section, index) => (
-          <div 
-            key={index} 
-            className="prose prose-slate max-w-none"
-            id={`section-${section.id || index}`}
-            onClick={() => {
-              if (onSectionChange && section.id) {
-                onSectionChange(section.id);
-              } else if (onSectionChange) {
-                onSectionChange(`section-${index}`);
-              }
-            }}
-          >
-            <h2 className="text-2xl font-semibold mb-4">{section.title}</h2>
-            <div dangerouslySetInnerHTML={{ __html: section.content }} />
-            
-            {section.examples && section.examples.length > 0 && (
-              <div className="bg-muted p-4 rounded-lg my-6">
-                <h3 className="text-xl font-medium mb-3">例題</h3>
-                {section.examples.map((example, i) => (
-                  <div key={i} className="mb-4">
-                    <h4 className="font-medium">{example.title}</h4>
-                    <div dangerouslySetInnerHTML={{ __html: example.content }} />
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            {section.keyPoints && section.keyPoints.length > 0 && (
-              <div className="border rounded-lg p-6 mt-8 bg-muted/50">
-                <h3 className="text-lg font-medium mb-4 flex items-center">
-                  <CheckCircle className="h-5 w-5 mr-2 text-green-500" />
-                  このセクションの要点
-                </h3>
-                <ul className="space-y-2">
-                  {section.keyPoints.map((point, i) => (
-                    <li key={i} className="flex items-start">
-                      <span className="bg-primary/10 text-primary rounded-full p-1 mr-2">✓</span>
-                      <span>{point}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            
-            {section.questions && section.questions.length > 0 && (
-              <div className="border border-primary/20 rounded-lg p-6 mt-8 bg-primary/5">
-                <h3 className="text-lg font-medium mb-4 flex items-center">
-                  <MessageCircle className="h-5 w-5 mr-2 text-primary" />
-                  練習問題
-                </h3>
-                <ul className="space-y-4">
-                  {section.questions.map((q, i) => (
-                    <li key={i} className="space-y-2">
-                      <p className="font-medium">{q.question}</p>
-                      {q.hint && (
-                        <p className="text-sm text-muted-foreground italic">ヒント: {q.hint}</p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-                <Button onClick={onStartPractice} className="mt-4">
-                  <MessageCircle className="h-4 w-4 mr-2" />
-                  AIチャットで解答する
+        {moduleDetail.content.map((section, index) => {
+          const sectionId = `section-${section.id || index}`;
+          const isPlaying = currentlyPlayingId === sectionId;
+          
+          return (
+            <div 
+              key={index} 
+              className="prose prose-slate max-w-none"
+              id={sectionId}
+              onClick={() => {
+                if (onSectionChange && section.id) {
+                  onSectionChange(section.id);
+                } else if (onSectionChange) {
+                  onSectionChange(`section-${index}`);
+                }
+              }}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-semibold mb-0">{section.title}</h2>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    speakText(section.content, sectionId);
+                  }}
+                  className="ml-2 flex items-center gap-1"
+                >
+                  {isPlaying ? (
+                    <React.Fragment>
+                      <Pause className="h-4 w-4" />
+                      <span>停止</span>
+                    </React.Fragment>
+                  ) : (
+                    <React.Fragment>
+                      <Volume2 className="h-4 w-4" />
+                      <span>読み上げ</span>
+                    </React.Fragment>
+                  )}
                 </Button>
               </div>
-            )}
-            
-            {section.summary && (
-              <div className="bg-primary/10 p-4 rounded-lg mt-6">
-                <h4 className="font-medium mb-2">まとめ</h4>
-                <div dangerouslySetInnerHTML={{ __html: section.summary }} />
-              </div>
-            )}
-            
-            {index < moduleDetail.content.length - 1 && <Separator className="my-8" />}
-          </div>
-        ))}
+              <div dangerouslySetInnerHTML={{ __html: section.content }} />
+              
+              {section.examples && section.examples.length > 0 && (
+                <div className="bg-muted p-4 rounded-lg my-6">
+                  <h3 className="text-xl font-medium mb-3">例題</h3>
+                  {section.examples.map((example, i) => (
+                    <div key={i} className="mb-4">
+                      <h4 className="font-medium">{example.title}</h4>
+                      <div dangerouslySetInnerHTML={{ __html: example.content }} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {section.keyPoints && section.keyPoints.length > 0 && (
+                <div className="border rounded-lg p-6 mt-8 bg-muted/50">
+                  <h3 className="text-lg font-medium mb-4 flex items-center">
+                    <CheckCircle className="h-5 w-5 mr-2 text-green-500" />
+                    このセクションの要点
+                  </h3>
+                  <ul className="space-y-2">
+                    {section.keyPoints.map((point, i) => (
+                      <li key={i} className="flex items-start">
+                        <span className="bg-primary/10 text-primary rounded-full p-1 mr-2">✓</span>
+                        <span>{point}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {section.questions && section.questions.length > 0 && (
+                <div className="border border-primary/20 rounded-lg p-6 mt-8 bg-primary/5">
+                  <h3 className="text-lg font-medium mb-4 flex items-center">
+                    <MessageCircle className="h-5 w-5 mr-2 text-primary" />
+                    練習問題
+                  </h3>
+                  <ul className="space-y-4">
+                    {section.questions.map((q, i) => (
+                      <li key={i} className="space-y-2">
+                        <p className="font-medium">{q.question}</p>
+                        {q.hint && (
+                          <p className="text-sm text-muted-foreground italic">ヒント: {q.hint}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <Button onClick={onStartPractice} className="mt-4">
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    AIチャットで解答する
+                  </Button>
+                </div>
+              )}
+              
+              {section.summary && (
+                <div className="bg-primary/10 p-4 rounded-lg mt-6">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-medium mb-2">まとめ</h4>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        speakText(section.summary, `summary-${sectionId}`);
+                      }}
+                      className="ml-2 flex items-center gap-1"
+                    >
+                      {currentlyPlayingId === `summary-${sectionId}` ? (
+                        <React.Fragment>
+                          <Pause className="h-4 w-4" />
+                          <span>停止</span>
+                        </React.Fragment>
+                      ) : (
+                        <React.Fragment>
+                          <Volume2 className="h-4 w-4" />
+                          <span>読み上げ</span>
+                        </React.Fragment>
+                      )}
+                    </Button>
+                  </div>
+                  <div dangerouslySetInnerHTML={{ __html: section.summary }} />
+                </div>
+              )}
+              
+              {index < moduleDetail.content.length - 1 && <Separator className="my-8" />}
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -141,7 +311,27 @@ const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentM
         {moduleDetail.content.map((section, index) => (
           section.summary && (
             <div key={index}>
-              <h3 className="text-lg font-medium mb-2">{section.title}</h3>
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-lg font-medium">{section.title}</h3>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => speakText(section.summary || '', `summary-tab-${index}`)}
+                  className="ml-2 flex items-center gap-1"
+                >
+                  {currentlyPlayingId === `summary-tab-${index}` ? (
+                    <React.Fragment>
+                      <Pause className="h-4 w-4" />
+                      <span>停止</span>
+                    </React.Fragment>
+                  ) : (
+                    <React.Fragment>
+                      <Volume2 className="h-4 w-4" />
+                      <span>読み上げ</span>
+                    </React.Fragment>
+                  )}
+                </Button>
+              </div>
               <div dangerouslySetInnerHTML={{ __html: section.summary }} />
               {index < moduleDetail.content.length - 1 && <Separator className="my-4" />}
             </div>
@@ -152,17 +342,74 @@ const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentM
   };
 
   return (
-    <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
-      <div>
-        <h1 className="text-3xl font-bold mb-4">{moduleDetail.title}</h1>
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">{moduleDetail?.title || 'モジュール'}</h1>
+            <DifficultyBadge />
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center space-x-2">
+              <span className="text-sm">音声機能</span>
+              <Switch 
+                checked={useOpenAIVoice} 
+                onCheckedChange={setUseOpenAIVoice}
+              />
+              {useOpenAIVoice && (
+                <Select value={voiceType} onValueChange={handleVoiceTypeChange}>
+                  <SelectTrigger className="w-[120px]">
+                    <SelectValue placeholder="音声タイプ" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="alloy">標準</SelectItem>
+                    <SelectItem value="echo">エコー</SelectItem>
+                    <SelectItem value="fable">ファブル</SelectItem>
+                    <SelectItem value="onyx">オニックス</SelectItem>
+                    <SelectItem value="nova">ノバ</SelectItem>
+                    <SelectItem value="shimmer">シマー</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleSidebar}
+              className="md:hidden"
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
         <div className="flex flex-wrap gap-2 mb-6">
-          <DifficultyBadge />
           <Badge variant="outline">所要時間: {currentModule?.estimated_duration || '30分'}</Badge>
           <Badge variant="secondary">必須モジュール</Badge>
         </div>
         <p className="text-muted-foreground mb-4">
           {moduleDetail.description}
         </p>
+        
+        <div className="flex items-center mb-4">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => speakText(moduleDetail.description || '', 'module-description')}
+            className="flex items-center gap-1"
+          >
+            {currentlyPlayingId === 'module-description' ? (
+              <React.Fragment>
+                <Pause className="h-4 w-4" />
+                <span>音声停止</span>
+              </React.Fragment>
+            ) : (
+              <React.Fragment>
+                <Volume2 className="h-4 w-4" />
+                <span>説明を読み上げ</span>
+              </React.Fragment>
+            )}
+          </Button>
+        </div>
 
         <div className="relative rounded-xl overflow-hidden aspect-video mb-6">
           <img 
@@ -177,7 +424,7 @@ const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentM
         </div>
       </div>
       
-      <Tabs defaultValue={activeContentTab} onValueChange={setActiveContentTab} className="w-full">
+      <Tabs defaultValue={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="content">コンテンツ</TabsTrigger>
           <TabsTrigger value="summary">要約</TabsTrigger>
@@ -251,33 +498,36 @@ const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentM
         <TabsContent value="notes" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>ノート</CardTitle>
+              <CardTitle>学習ノート</CardTitle>
               <CardDescription>
-                このモジュールの学習過程で記録したノートを管理できます
+                このモジュールに関する自分のメモを記録できます
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <textarea
-                className="min-h-[200px] w-full border rounded-md p-4 resize-y"
-                placeholder="ここにノートを入力してください..."
-              />
+              <div className="border rounded-md p-4 h-64 flex items-center justify-center">
+                <p className="text-muted-foreground">ノート機能は現在開発中です</p>
+              </div>
             </CardContent>
-            <CardFooter className="flex justify-between">
-              <Button variant="outline">クリア</Button>
-              <Button>保存</Button>
-            </CardFooter>
           </Card>
         </TabsContent>
       </Tabs>
       
-      <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg p-6 mt-8">
-        <h3 className="text-xl font-medium mb-3">次のステップ</h3>
-        <p className="mb-4">
-          このモジュールの学習が完了したら、AIチャットボットとのインタラクティブなセッションで
-          理解度を確認しましょう。その後、次のモジュールに進むことができます。
-        </p>
-        <Button className="w-full sm:w-auto" onClick={onStartPractice}>
-          AIチャットセッションを開始
+      <div className="sticky bottom-4 flex justify-center z-10 gap-4">
+        <Button 
+          size="lg" 
+          onClick={onStartPractice}
+          className="shadow-lg"
+        >
+          <MessageCircle className="mr-2 h-5 w-5" />
+          AIチャットで質問する
+        </Button>
+        
+        <Button
+          variant="outline"
+          onClick={handleNextModule}
+          disabled={!currentModule?.next_module?.id}
+        >
+          次のモジュールへ
         </Button>
       </div>
     </div>
@@ -286,7 +536,7 @@ const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentM
 
 // デフォルトのモジュールコンテンツ（データが生成されるまでの表示用）
 const DefaultModuleContent = ({ activeModule, onStartPractice }: MaterialContentProps) => {
-  const [activeContentTab, setActiveContentTab] = useState("content");
+  const [activeTab, setActiveTab] = useState('introduction');
   
   // 導入モジュールのコンテンツ
   const IntroductionModule = () => (
@@ -316,7 +566,7 @@ const DefaultModuleContent = ({ activeModule, onStartPractice }: MaterialContent
         </div>
       </div>
       
-      <Tabs defaultValue={activeContentTab} onValueChange={setActiveContentTab} className="w-full">
+      <Tabs defaultValue={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="content">コンテンツ</TabsTrigger>
           <TabsTrigger value="summary">要約</TabsTrigger>

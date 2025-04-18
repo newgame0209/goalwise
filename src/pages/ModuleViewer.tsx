@@ -237,7 +237,15 @@ const ModuleViewer = () => {
               const firstModule = {
                 ...curriculumData.modules[0],
                 curriculum_title: curriculumData.title || '',
-                curriculum_description: curriculumData.description || ''
+                curriculum_description: curriculumData.description || '',
+                // 基本的な情報を追加
+                module_index: 0,
+                total_modules: curriculumData.modules.length,
+                previous_module: null,
+                next_module: curriculumData.modules.length > 1 ? {
+                  id: curriculumData.modules[1].id,
+                  title: curriculumData.modules[1].title
+                } : null
               };
               setCurrentModule(firstModule);
               console.log('ModuleViewer: 指定されたモジュールが見つからないため最初のモジュールを選択:', firstModule);
@@ -247,37 +255,19 @@ const ModuleViewer = () => {
             const firstModule = {
               ...curriculumData.modules[0],
               curriculum_title: curriculumData.title || '',
-              curriculum_description: curriculumData.description || ''
+              curriculum_description: curriculumData.description || '',
+              // 基本的な情報を追加
+              module_index: 0,
+              total_modules: curriculumData.modules.length,
+              previous_module: null,
+              next_module: curriculumData.modules.length > 1 ? {
+                id: curriculumData.modules[1].id,
+                title: curriculumData.modules[1].title
+              } : null
             };
             setCurrentModule(firstModule);
             console.log('ModuleViewer: モジュールIDが指定されていないため最初のモジュールを選択:', firstModule);
           }
-          
-          // 進捗情報を取得
-          try {
-            const { data: progressData, error: progressError } = await supabase
-              .from('learning_progress')
-              .select('*')
-              .eq('user_id', user?.id)
-              .eq('module_id', currentModule.id)
-              .eq('session_type', 'content:1')
-              .limit(1);
-            
-            if (progressData && progressData.length > 0 && !progressError) {
-              // 個別のセクションの進捗を更新
-              setProgress(prev => ({
-                ...prev,
-                [currentModule.id]: progressData[0].completion_percentage || 0
-              }));
-            }
-          } catch (progressError) {
-            console.error('進捗データ取得エラー:', progressError);
-          }
-          
-          // モジュールデータを取得したらすぐにモジュール詳細の生成を開始
-          setTimeout(() => {
-            generateModuleContent();
-          }, 500);
         } else {
           setLoadingState(LoadingState.NO_DATA);
           setErrorMessage('カリキュラムデータが見つかりませんでした。まずはプロファイリングを完了させてください。');
@@ -292,8 +282,60 @@ const ModuleViewer = () => {
     fetchCurriculum();
   }, [user, moduleId]);
   
+  // currentModuleが設定された後に進捗データを取得し、モジュール詳細の生成を開始
+  useEffect(() => {
+    // currentModuleが設定されていない場合は処理をスキップ
+    if (!currentModule || !user) return;
+    
+    console.log('ModuleViewer: currentModuleが設定されたので生成を開始します', currentModule);
+    
+    const fetchProgress = async () => {
+      try {
+        // 進捗情報を取得
+        const { data: progressData, error: progressError } = await supabase
+          .from('learning_progress')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('module_id', currentModule.id)
+          .eq('session_type', 'content:1');
+        
+        if (!progressError && progressData && progressData.length > 0) {
+          // 個別のセクションの進捗を更新
+          setProgress(prev => ({
+            ...prev,
+            [currentModule.id]: progressData[0].completion_percentage || 0
+          }));
+          console.log('ModuleViewer: 進捗データを取得しました:', progressData[0]);
+        } else if (progressError) {
+          console.error('進捗データ取得エラー:', progressError);
+        } else {
+          console.log('ModuleViewer: 進捗データが見つかりませんでした');
+          // 進捗データがない場合は0%として初期化
+          setProgress(prev => ({
+            ...prev,
+            [currentModule.id]: 0
+          }));
+        }
+      } catch (err) {
+        console.error('進捗データ取得処理エラー:', err);
+      }
+      
+      // モジュール詳細の生成を開始
+      generateModuleContent();
+    };
+    
+    fetchProgress();
+  }, [currentModule, user]); // currentModuleとuserが変更されたときだけ実行
+
   // モジュール詳細を生成する関数
   const generateModuleContent = async () => {
+    // すでにモジュール詳細が存在する場合は生成をスキップ
+    if (moduleDetail) {
+      console.log('ModuleViewer: モジュール詳細が既に存在します。生成をスキップします。');
+      setLoadingState(LoadingState.SUCCESS);
+      return;
+    }
+    
     // currentModuleが設定されていない場合は処理をスキップ
     if (!currentModule) {
       console.log('ModuleViewer: currentModuleが設定されていません。処理をスキップします。');
@@ -638,6 +680,10 @@ const ModuleViewer = () => {
 
   const handleModuleChange = async (moduleId: string) => {
     setActiveModule(moduleId);
+    
+    // 新しいモジュールに切り替えるため、現在のモジュール詳細をリセット
+    setModuleDetail(null);
+    setLoadingState(LoadingState.LOADING);
     
     if (isMobile) {
       setSidebarOpen(false);
@@ -1025,7 +1071,7 @@ const ModuleViewer = () => {
               </Button>
             )}
             
-            <div className="container mx-auto px-4 py-6 md:px-6 lg:px-8 max-w-5xl">
+            <div className="container mx-auto px-4 py-6 md:px-6 lg:px-8 max-w-4xl mt-16">
               {loadingState === LoadingState.LOADING ? (
                 <div className="mt-20">
                   {generationStarted ? (
