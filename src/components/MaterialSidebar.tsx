@@ -84,7 +84,7 @@ const MaterialSidebar = ({ activeModule, onModuleChange, progress, curriculumMod
     : 'データ分析の基礎';
 
   return (
-    <Sidebar variant="inset">
+    <Sidebar variant="inset" className="mt-20 md:mt-24">
       <SidebarHeader className="p-4">
         <div className="flex flex-col space-y-2">
           <h2 className="text-xl font-semibold">{sidebarTitle}</h2>
@@ -95,7 +95,7 @@ const MaterialSidebar = ({ activeModule, onModuleChange, progress, curriculumMod
         </div>
       </SidebarHeader>
       
-      <SidebarContent>
+      <SidebarContent className="pt-4">
         <Tabs value={viewMode} onValueChange={setViewMode} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="modules" className="text-xs">

@@ -1,4 +1,3 @@
-
 import { ReactNode, useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +13,7 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const { user, loading } = useAuth();
   const { profileCompleted, setProfileCompleted } = useChatState();
   const [checkingProfile, setCheckingProfile] = useState(true);
+  const [profileCheckDone, setProfileCheckDone] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -25,14 +25,24 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
             .from('profiles')
             .select('profile_completed')
             .eq('id', user.id)
-            .single();
+            .maybeSingle();
 
-          if (error) throw error;
+          if (error && error.code !== 'PGRST116') {
+            // PGRST116 = 0 rows; その場合は後続で再試行する
+            throw error;
+          }
+
+          // データが無い場合は profileCompleted を既存状態のまま保持し再チェック
+          if (!profileData) {
+            console.warn('profiles テーブルにレコードが見つかりません。後で再試行します。');
+            return;
+          }
 
           console.log("取得したプロファイル完了状態:", profileData?.profile_completed);
           
           // プロファイル完了状態を設定
           setProfileCompleted(profileData?.profile_completed || false);
+          setProfileCheckDone(true);
         } catch (error) {
           console.error('プロファイル状態チェックエラー:', error);
         } finally {
@@ -46,7 +56,7 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     checkProfileStatus();
   }, [user, setProfileCompleted]);
 
-  if (loading || checkingProfile) {
+  if (loading || checkingProfile || !profileCheckDone) {
     // ローディング中の表示
     return <div className="min-h-screen flex items-center justify-center">読み込み中...</div>;
   }

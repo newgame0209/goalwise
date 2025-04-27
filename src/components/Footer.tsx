@@ -1,7 +1,10 @@
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
+  const { user } = useAuth();
+  if (user) return null;
   
   return (
     <footer className="border-t border-border/50 py-12 mt-20">

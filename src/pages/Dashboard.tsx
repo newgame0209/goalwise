@@ -226,24 +226,16 @@ const Dashboard = () => {
   };
 
   const fetchUserCurriculum = async () => {
-    // 進行中のリクエストがあれば無視
+    // 他タブで同時にロードしている場合のみブロック（リロード時は許可）
     if (isFetchingRef.current) return;
-    isFetchingRef.current = true;
+    
+    // 処理開始フラグをタブ単位で設定
+    const sessionKey = `curriculum_fetch_${user.id}`;
+    sessionStorage.setItem(sessionKey, Date.now().toString());
     
     setLoading(true);
     let retryCount = 0;
     const maxRetries = 3;
-    const sessionKey = `curriculum_fetch_${user.id}`;
-    
-    // 同一セッション内での重複処理防止
-    if (sessionStorage.getItem(sessionKey)) {
-      console.log('このセッションで既にデータ取得処理を実行中です');
-      isFetchingRef.current = false;
-      setLoading(false);
-      return;
-    }
-    
-    sessionStorage.setItem(sessionKey, 'true');
     
     try {
       while (retryCount < maxRetries) {
@@ -542,14 +534,6 @@ const Dashboard = () => {
                 <h1 className="text-3xl font-bold tracking-tight">こんにちは、{userName} さん</h1>
                 <p className="text-muted-foreground mt-1">あなたの今日の学習目標と進捗状況を確認しましょう。</p>
               </div>
-              {curriculum && (
-              <Button className="button-hover self-start" asChild>
-                  <NavLink to={hasStartedLearning ? "/materials" : `/modules/${curriculum.modules[0]?.id}`}>
-                    {hasStartedLearning ? "続きから学習する" : "学習を始める"}
-                  <ChevronRight className="ml-1 h-4 w-4" />
-                </NavLink>
-              </Button>
-              )}
             </div>
           </div>
           
@@ -689,7 +673,7 @@ const Dashboard = () => {
                 </>
               ) : (
                 // 新規ユーザー向けのウェルカムセクション
-                <div className="mb-12 w-full">
+                <div className="mb-12 w-full mt-8">
                   <Card className="animate-fade-in w-full">
                     <CardHeader>
                       <CardTitle>学習を始めましょう！</CardTitle>
@@ -705,12 +689,14 @@ const Dashboard = () => {
                           あなたの目標と学習スタイルに合わせて最適化された学習プランで効率的に知識を身につけましょう。
                         </p>
                         <div className="pt-2">
-                          <Button size="lg" className="button-hover" asChild>
-                            <NavLink to={`/modules/${curriculum.modules[0]?.id}`}>
-                              今すぐ学習を始める
-                              <ChevronRight className="ml-1 h-4 w-4" />
-                            </NavLink>
-                          </Button>
+                          {curriculum?.modules && curriculum.modules.length > 0 && (
+                            <Button size="lg" className="button-hover" asChild>
+                              <NavLink to={`/modules/${curriculum.modules[0].id}`}>
+                                今すぐ学習を始める
+                                <ChevronRight className="ml-1 h-4 w-4" />
+                              </NavLink>
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </CardContent>

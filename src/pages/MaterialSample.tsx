@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { CurriculumStructure, generateModuleDetail, ModuleDetail } from '@/services/openai';
 import { useSearchParams } from 'react-router-dom';
+import { Json } from '@/integrations/supabase/types';
 
 interface ProgressState {
   introduction: number;
@@ -95,13 +96,37 @@ const ModuleViewer = () => {
   // 選択されたモジュールが変更されたら詳細を取得
   useEffect(() => {
     const fetchModuleDetail = async () => {
-      if (!currentModule || !user) return;
+      // モジュールIDが存在しない場合は処理を中断
+      if (!currentModule?.id || !user) return;
       
       try {
         setLoading(true);
         setModuleDetail(null);
         console.log("Fetching module detail for:", currentModule.title);
-        
+
+        // ① 既に生成済みのモジュール詳細があるか Supabase を確認
+        const { data: existingDetail, error: fetchDetailError } = await supabase
+          .from('module_details')
+          .select('detail_data')
+          .eq('module_id', currentModule.id)
+          .single();
+
+        if (fetchDetailError && fetchDetailError.code !== 'PGRST116') {
+          // PGRST116 = データが見つからない (not found) → これは許容
+          throw fetchDetailError;
+        }
+
+        // 既に存在する場合は API 生成をスキップしてそのまま使用
+        if (existingDetail?.detail_data) {
+          console.log('既存のモジュール詳細を取得 (再生成せず):', existingDetail.detail_data);
+          setModuleDetail(existingDetail.detail_data as unknown as ModuleDetail);
+          toast({
+            title: 'コンテンツを取得しました',
+            description: '以前に生成されたコンテンツを表示しています',
+          });
+          return; // ここで終了
+        }
+
         // プロファイルデータを取得
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
@@ -157,6 +182,20 @@ const ModuleViewer = () => {
             title: 'モジュール詳細の生成完了',
             description: '学習を開始できます',
           });
+
+          // ② 生成したモジュール詳細を Supabase に保存 (キャッシュ用途)
+          const { error: saveError } = await supabase
+            .from('module_details')
+            .insert({
+              module_id: currentModule.id,
+              user_id: user.id,
+              detail_data: detail as unknown as Json,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
+          if (saveError) {
+            console.error('モジュール詳細の保存エラー:', saveError);
+          }
         } else {
           throw new Error('モジュール詳細の生成に失敗しました (null が返されました)');
         }
@@ -175,7 +214,7 @@ const ModuleViewer = () => {
     };
     
     fetchModuleDetail();
-  }, [currentModule, user, toast]);
+  }, [currentModule?.id, user?.id, toast]);
 
   // モバイル表示時にはサイドバーを閉じる
   useEffect(() => {

@@ -42,14 +42,11 @@ const Navbar = () => {
   // Define navigation items based on auth state
   const navItems = isLoggedIn 
     ? [
-        { name: 'ホーム', path: '/' },
         { name: 'ダッシュボード', path: '/dashboard' },
         { name: '教材一覧', path: '/materials' },
-        { name: '教材サンプル', path: '/material-samples' },
       ]
     : [
         { name: 'ホーム', path: '/' },
-        { name: '教材サンプル', path: '/material-samples' },
       ];
 
   return (
@@ -58,7 +55,7 @@ const Navbar = () => {
         isScrolled ? 'py-3 glass shadow-subtle' : 'py-5 bg-transparent'
       }`}
     >
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl flex items-center justify-between">
+      <div className="px-4 sm:px-6 lg:px-8 w-full max-w-none flex items-center justify-between">
         {/* Logo */}
         <NavLink to="/" className="relative z-10 flex items-center">
           <div className="flex items-center gap-2">

@@ -307,12 +307,11 @@ export default function ChatWidget() {
               welcomeMessageSentRef.current = true;
               setIsOpen(true);
               setIsMinimized(false);
-              
-              // ダッシュボードへの遷移メッセージを表示
+
+              // 1. カリキュラム生成完了メッセージ
               const transitionMessage = userName 
                 ? `${userName}さん、ダッシュボードへようこそ！カリキュラムの生成が完了しました。`
                 : 'ダッシュボードへようこそ！カリキュラムの生成が完了しました。';
-              
               addMessage({
                 id: Date.now().toString(),
                 role: 'assistant',
@@ -320,25 +319,26 @@ export default function ChatWidget() {
                 timestamp: new Date(),
               });
 
-              // 少し待ってから学習開始のガイダンスを表示
+              // 2. 学習開始ガイダンス
               setTimeout(() => {
-                const guidanceMessage = `
-学習を始める前に、以下のポイントを確認しましょう：
-
-1. 各モジュールの進捗は0%からスタートします
-2. モジュールをクリックすると学習を開始できます
-3. 学習中はAIアシスタントがサポートします
-4. 分からないことがあればいつでも質問してください
-
-それでは、学習を始めましょう！`;
-
+                const guidanceMessage = `学習を始める前に、以下のポイントを確認しましょう：\n\n1. 各モジュールの進捗は0%からスタートします\n2. モジュールをクリックすると学習を開始できます\n3. 学習中はAIアシスタントがサポートします\n4. 分からないことがあればいつでも質問してください`;
                 addMessage({
                   id: Date.now().toString(),
                   role: 'assistant',
                   content: guidanceMessage,
                   timestamp: new Date(),
                 });
-              }, 1000);
+
+                // 3. 最後の「それでは、学習を始めましょう！」
+                setTimeout(() => {
+                  addMessage({
+                    id: Date.now().toString(),
+                    role: 'assistant',
+                    content: 'それでは、学習を始めましょう！',
+                    timestamp: new Date(),
+                  });
+                }, 1200);
+              }, 1200);
             }
           }
         } catch (error) {
@@ -547,8 +547,9 @@ export default function ChatWidget() {
                 }
                 
                 // プロファイルデータを抽出
-                const extractedProfileData = profileData?.profile_data?.answers
-                  ? profileData.profile_data.answers.reduce((acc: any, item: any) => {
+                const answers = (profileData?.profile_data as any)?.answers;
+                const extractedProfileData = answers
+                  ? answers.reduce((acc: any, item: any) => {
                       // 質問文からキーを抽出
                       let key = '';
                       if (item.question.includes('学習目標')) key = 'goal';
@@ -805,9 +806,22 @@ export default function ChatWidget() {
     setIsFullscreen(!isFullscreen);
   };
 
-  const closeChat = () => {
-    setIsOpen(false);
-    setIsFullscreen(false);
+  const closeChat = (e?: React.MouseEvent) => {
+    // ボタン押下による親要素へのイベント伝播を防止し、
+    // クリックアップ時に基盤要素が反応してページ遷移するのを防ぐ
+    e?.preventDefault();
+    e?.stopPropagation();
+
+    // 即時にアンマウントすると click イベントが裏の要素へ伝播し
+    // ダッシュボードのリンクが誤タップされることがある。
+    // 伝播は既に止めているが、ブラウザが click ターゲットを
+    // 再計算する前に DOM を消すと click が下層要素に届くケースがある。
+    // 少し遅延させて安全に非表示へする。
+
+    setTimeout(() => {
+      setIsOpen(false);
+      setIsFullscreen(false);
+    }, 50);
   };
 
   const renderQuestionForm = () => {
@@ -939,8 +953,8 @@ export default function ChatWidget() {
   const chatContainerClass = isFullscreen
     ? 'fixed inset-0 z-50 flex items-center justify-center bg-black/70'
     : isMinimized
-      ? 'fixed bottom-6 right-6 w-14 h-14'
-      : 'fixed bottom-6 right-6 w-80 sm:w-96 h-[500px]';
+      ? 'fixed bottom-6 right-6 w-14 h-14 z-40'
+      : 'fixed bottom-6 right-6 w-80 sm:w-96 h-[500px] z-40';
 
   const chatWindowClass = isFullscreen
     ? 'bg-background border border-border rounded-lg shadow-lg flex flex-col w-[90%] h-[90%] max-w-[800px] overflow-hidden'
@@ -961,7 +975,10 @@ export default function ChatWidget() {
           </Button>
         ) : (
           <>
-            <div className="p-3 border-b flex justify-between items-center bg-primary text-primary-foreground rounded-t-lg">
+            <div
+              className="p-3 border-b flex justify-between items-center bg-primary text-primary-foreground rounded-t-lg"
+              onClick={(e) => e.stopPropagation()}
+            >
               <h3 className="font-medium">AIアシスタント</h3>
               <div className="flex items-center space-x-1">
                 {!isFullscreen && (
@@ -986,15 +1003,13 @@ export default function ChatWidget() {
                     <Minimize2 className="h-4 w-4" />
                   </Button>
                 ) : (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-primary-foreground"
+                  <button
+                    className="h-8 w-8 flex items-center justify-center text-primary-foreground hover:bg-primary/20 rounded-md"
                     onClick={closeChat}
                     title="閉じる"
                   >
                     <X className="h-4 w-4" />
-                  </Button>
+                  </button>
                 )}
               </div>
             </div>

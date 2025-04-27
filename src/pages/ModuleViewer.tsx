@@ -26,6 +26,8 @@ import { ProgressIndicator } from '@/components/ui/progress-indicator';
 import { generateFallbackModuleDetail, getFriendlyErrorMessage } from '@/services/fallback';
 import { getOpenAIKey } from '@/services/openai';
 import { fetchUserProfileData } from '@/services/profile';
+import { Json } from '@/integrations/supabase/types';
+import { Sheet, SheetContent, SheetHeader, SheetClose } from '@/components/ui/sheet';
 
 interface ProgressState {
   introduction: number;
@@ -180,6 +182,7 @@ const ModuleViewer = () => {
   const [moduleDetail, setModuleDetail] = useState<ModuleDetail | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isChatFullscreen, setIsChatFullscreen] = useState(false);
   const { startSession } = useLearningChat();
   const [activeTab, setActiveTab] = useState('content');
   const [chatSessionType, setChatSessionType] = useState<ChatSessionType>('practice');
@@ -292,22 +295,22 @@ const ModuleViewer = () => {
     const fetchProgress = async () => {
       try {
         // 進捗情報を取得
-        const { data: progressData, error: progressError } = await supabase
-          .from('learning_progress')
-          .select('*')
+            const { data: progressData, error: progressError } = await supabase
+              .from('learning_progress')
+              .select('*')
           .eq('user_id', user.id)
-          .eq('module_id', currentModule.id)
+              .eq('module_id', currentModule.id)
           .eq('session_type', 'content:1');
-        
+            
         if (!progressError && progressData && progressData.length > 0) {
-          // 個別のセクションの進捗を更新
-          setProgress(prev => ({
-            ...prev,
-            [currentModule.id]: progressData[0].completion_percentage || 0
-          }));
+              // 個別のセクションの進捗を更新
+              setProgress(prev => ({
+                ...prev,
+                [currentModule.id]: progressData[0].completion_percentage || 0
+              }));
           console.log('ModuleViewer: 進捗データを取得しました:', progressData[0]);
         } else if (progressError) {
-          console.error('進捗データ取得エラー:', progressError);
+            console.error('進捗データ取得エラー:', progressError);
         } else {
           console.log('ModuleViewer: 進捗データが見つかりませんでした');
           // 進捗データがない場合は0%として初期化
@@ -326,7 +329,7 @@ const ModuleViewer = () => {
     
     fetchProgress();
   }, [currentModule, user]); // currentModuleとuserが変更されたときだけ実行
-
+  
   // モジュール詳細を生成する関数
   const generateModuleContent = async () => {
     // すでにモジュール詳細が存在する場合は生成をスキップ
@@ -406,12 +409,16 @@ const ModuleViewer = () => {
       });
       console.log('ModuleViewer: ステップ1 - Supabaseからモジュール詳細の検索を開始');
       
-      // Supabaseからモジュール詳細を検索
+      const searchModuleId = currentModule ? currentModule.id : moduleId;
+
       const { data, error } = await supabase
         .from('module_details')
         .select('*')
-        .eq('module_id', moduleId)
-        .single();
+        .eq('module_id', searchModuleId)
+        .eq('user_id', user?.id || '')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
         
       if (error && error.code !== 'PGRST116') { // PGRST116 = データが見つからない
         console.error('ModuleViewer: モジュール詳細取得エラー:', error);
@@ -421,7 +428,7 @@ const ModuleViewer = () => {
       // モジュール詳細が存在する場合はそれを使用
       if (data) {
         console.log('ModuleViewer: 既存のモジュール詳細を取得しました:', data);
-        setModuleDetail(data.detail_data);
+        setModuleDetail(data.detail_data as unknown as ModuleDetail);
         setLoadingState(LoadingState.SUCCESS);
         if (timeoutId) clearTimeout(timeoutId);
         return;
@@ -511,7 +518,7 @@ const ModuleViewer = () => {
         .insert({
           module_id: currentModule.id,
           user_id: user?.id,
-          detail_data: detailDataForStorage,
+          detail_data: detailDataForStorage as unknown as Json,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         });
@@ -699,9 +706,11 @@ const ModuleViewer = () => {
             user_id: user?.id,
             module_id: moduleId,
             completion_percentage: 0,
-            session_type: 'content',
-            started_at: now,
-            updated_at: now
+            session_type: 'content:1',
+            created_at: now,
+            updated_at: now,
+            duration_minutes: 0,
+            completed: false
           });
           
         if (progressError) throw progressError;
@@ -891,7 +900,9 @@ const ModuleViewer = () => {
     // ここに必要な処理を追加
     console.log(`ModuleViewer: チャットセッション開始 - タイプ: ${type}`);
     // chatSessionをstartSessionで開始
-    startSession(type);
+    if (moduleDetail) {
+      startSession(type, moduleDetail);
+    }
   };
 
   // タブ切り替え時の処理
@@ -902,6 +913,11 @@ const ModuleViewer = () => {
       // チャットが初めて開かれる場合はデフォルトのセッションを設定
       handleChatSessionStart('practice');
     }
+  };
+
+  // チャットシート表示サイズ切替
+  const toggleChatFullscreen = () => {
+    setIsChatFullscreen(prev => !prev);
   };
 
   // ローディング状態に応じて表示を切り替え
@@ -999,21 +1015,20 @@ const ModuleViewer = () => {
             </div>
             
             <TabsContent value="content" className="flex-1 overflow-auto px-0">
-              <MaterialContent content={moduleDetail} />
+              <MaterialContent moduleDetail={moduleDetail} />
             </TabsContent>
             
             <TabsContent value="chat" className="flex-1 overflow-hidden p-0">
               <LearningChatProvider>
                 <LearningChat
                   moduleDetail={moduleDetail}
-                  onSessionStart={handleChatSessionStart}
-                  onSessionComplete={handleChatComplete}
+                  sessionType={chatSessionType}
                 />
               </LearningChatProvider>
             </TabsContent>
             
             <TabsContent value="resources" className="flex-1 overflow-auto">
-              <ResourceList moduleId={moduleId || ''} resources={moduleDetail.resources || []} />
+              <ResourceList moduleDetail={moduleDetail} currentSectionId={currentSectionId} />
             </TabsContent>
           </Tabs>
         );
@@ -1071,7 +1086,7 @@ const ModuleViewer = () => {
               </Button>
             )}
             
-            <div className="container mx-auto px-4 py-6 md:px-6 lg:px-8 max-w-4xl mt-16">
+            <div className="px-4 py-6 md:px-6 lg:px-8 mx-0 md:ml-6 lg:ml-8 max-w-none lg:max-w-5xl mt-16">
               {loadingState === LoadingState.LOADING ? (
                 <div className="mt-20">
                   {generationStarted ? (
@@ -1106,45 +1121,17 @@ const ModuleViewer = () => {
                     </Button>
                   )}
                   
-                  <LearningChatProvider>
-                    <div className={`transition-all duration-300 ${isChatOpen ? 'mr-0 lg:mr-80' : 'mr-0'}`}>
-              <MaterialContent 
-                activeModule={activeModule} 
-                onStartPractice={handleStartPractice}
-                moduleDetail={moduleDetail}
-                currentModule={currentModule}
-                        toggleSidebar={toggleSidebar}
-                        isSidebarOpen={sidebarOpen}
-                        onSectionChange={handleSectionChange}
-                      />
-                    </div>
-                    
-                    <div className={`fixed right-0 top-16 bottom-0 transition-all duration-300 bg-background z-20 border-l overflow-hidden ${
-                      isChatOpen ? 'w-full sm:w-96 lg:w-80' : 'w-0'
-                    }`}>
-                      {isChatOpen && (
-                        <div className="h-full flex flex-col">
-                          <div className="px-4 py-3 border-b flex justify-between items-center bg-muted/20">
-                            <h3 className="font-semibold">AI学習サポート</h3>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => setIsChatOpen(false)}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          
-                          <LearningChat 
-                            onComplete={handleChatComplete}
-                            moduleDetail={moduleDetail}
-                            sessionType={chatSessionType}
-                            sectionId={currentSectionId}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </LearningChatProvider>
+                  <div className={`transition-all duration-300`}>
+                    <MaterialContent 
+                      activeModule={activeModule} 
+                      onStartPractice={handleStartPractice}
+                      moduleDetail={moduleDetail}
+                      currentModule={currentModule}
+                      toggleSidebar={toggleSidebar}
+                      isSidebarOpen={sidebarOpen}
+                      onSectionChange={handleSectionChange}
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -1153,7 +1140,7 @@ const ModuleViewer = () => {
       </div>
       
       {!isChatOpen && (
-        <div className="fixed bottom-6 right-6">
+        <div className="fixed bottom-6 right-6 z-30">
           <Button 
             onClick={() => setIsChatOpen(true)}
             size="lg"
@@ -1164,6 +1151,47 @@ const ModuleViewer = () => {
           </Button>
         </div>
       )}
+        
+      {/* Chat Widget Sheet */}
+      <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>
+        <SheetContent
+          side="right"
+          className={`${isChatFullscreen ? 'max-w-none w-full md:w-full' : 'sm:max-w-sm w-full'} flex flex-col h-full p-0`}
+        >
+          <SheetHeader className="px-4 py-3 border-b bg-muted/20 flex items-center justify-between">
+            <h3 className="font-semibold">AI学習サポート</h3>
+            <div className="flex gap-2 items-center">
+              {/* フルスクリーン切替ボタン */}
+              <button
+                className="p-2 rounded-md hover:bg-muted/20"
+                onClick={toggleChatFullscreen}
+              >
+                {isChatFullscreen ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4h4M4 4l6 6M20 16v4h-4m4 0l-6-6"/></svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4h4M4 4l6 6M20 16v4h-4m4 0l-6-6M20 8V4h-4m0 0l-6 6M4 16v4h4m0 0l6-6"/></svg>
+                )}
+                <span className="sr-only">{isChatFullscreen ? '縮小' : '拡大'}</span>
+              </button>
+
+              <SheetClose asChild>
+                <button className="p-2 rounded-md hover:bg-muted/20">
+                  <X className="h-4 w-4" />
+                  <span className="sr-only">閉じる</span>
+                </button>
+              </SheetClose>
+            </div>
+          </SheetHeader>
+          <div className="flex-1 overflow-auto">
+            <LearningChatProvider>
+              <LearningChat
+                moduleDetail={moduleDetail}
+                sessionType={chatSessionType}
+              />
+            </LearningChatProvider>
+          </div>
+        </SheetContent>
+      </Sheet>
         
         <Footer />
       </div>

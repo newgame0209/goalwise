@@ -17,6 +17,7 @@ import { ChatStateProvider } from '@/components/ChatWidget/ChatState';
 import ApiKeyManager from '@/components/ApiKeyManager';
 import ModuleViewer from '@/pages/ModuleViewer';
 import ProgressDashboard from '@/components/Dashboard/ProgressDashboard';
+import Materials from '@/pages/Materials';
 
 function App() {
   return (
@@ -63,6 +64,12 @@ function App() {
                   } />
                   
                   <Route path="/material-samples" element={<ModuleViewer />} />
+                  
+                  <Route path="/materials" element={
+                    <ProtectedRoute>
+                      <Materials />
+                    </ProtectedRoute>
+                  } />
                   
                   <Route path="/not-found" element={<NotFound />} />
                   <Route path="*" element={<Navigate to="/not-found" replace />} />

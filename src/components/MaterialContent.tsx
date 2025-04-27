@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { PlayCircle, BookOpen, Volume2, ExternalLink, CheckCircle, MessageCircle, Pause, Menu } from 'lucide-react';
+import { PlayCircle, BookOpen, Volume2, ExternalLink, CheckCircle, MessageCircle, Pause, Menu, Download } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import { generateSpeech } from '@/services/openai';
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useNavigate } from 'react-router-dom';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface MaterialContentProps {
   activeModule?: string;
@@ -23,7 +25,7 @@ interface MaterialContentProps {
 }
 
 const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentModule, toggleSidebar, isSidebarOpen, onSectionChange }: MaterialContentProps) => {
-  const [activeTab, setActiveTab] = useState('introduction');
+  const [activeTab, setActiveTab] = useState('content');
   const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
   const [useOpenAIVoice, setUseOpenAIVoice] = useState(true);
   const [voiceType, setVoiceType] = useState('alloy');
@@ -33,13 +35,13 @@ const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentM
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const summaryContentRef = useRef<HTMLDivElement>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
   
   // コンポーネントマウント時にSpeech APIをセットアップ
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      if (window.speechSynthesis) {
-        setSpeechSynthesis(window.speechSynthesis);
-      }
+      // window.speechSynthesis は直接参照するため、状態管理は不要
       
       // Audio要素の作成
       audioRef.current = new Audio();
@@ -56,6 +58,11 @@ const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentM
       }
     };
   }, []);
+  
+  // ページ更新時にタブ状態を保持
+  useEffect(() => {
+    setActiveTab('content');
+  }, [moduleDetail]);
   
   const handleVoiceTypeChange = (value: string) => {
     setVoiceType(value);
@@ -301,44 +308,77 @@ const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentM
   
   // モジュールの要約を生成
   const generateSummary = () => {
-    if (!moduleDetail.content || moduleDetail.content.length === 0) {
+    if (!moduleDetail?.content || moduleDetail.content.length === 0) {
       return <p>要約がありません。</p>;
     }
     
-    // 各セクションの要約を集めて表示
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         {moduleDetail.content.map((section, index) => (
-          section.summary && (
-            <div key={index}>
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="text-lg font-medium">{section.title}</h3>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => speakText(section.summary || '', `summary-tab-${index}`)}
-                  className="ml-2 flex items-center gap-1"
-                >
-                  {currentlyPlayingId === `summary-tab-${index}` ? (
-                    <React.Fragment>
-                      <Pause className="h-4 w-4" />
-                      <span>停止</span>
-                    </React.Fragment>
-                  ) : (
-                    <React.Fragment>
-                      <Volume2 className="h-4 w-4" />
-                      <span>読み上げ</span>
-                    </React.Fragment>
-                  )}
-                </Button>
-              </div>
-              <div dangerouslySetInnerHTML={{ __html: section.summary }} />
-              {index < moduleDetail.content.length - 1 && <Separator className="my-4" />}
-            </div>
-          )
+          <div key={index}>
+            <h4 className="font-semibold mb-2">{section.title}</h4>
+            {section.keyPoints && section.keyPoints.length > 0 ? (
+              <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+                {section.keyPoints.map((point, i) => (
+                  <li key={i}>{point}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {section.summary || section.content.slice(0, 100).replace(/<[^>]*>/g, '') + (section.content.length > 100 ? '...' : '')}
+              </p>
+            )}
+          </div>
         ))}
       </div>
     );
+  };
+
+  // PDFダウンロード処理
+  const handleDownloadSummary = async () => {
+    if (!summaryContentRef.current) {
+      toast({
+        title: "ダウンロードエラー",
+        description: "要約コンテンツが見つかりません。",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsDownloading(true);
+    toast({
+      title: "PDF生成中",
+      description: "要約のPDFを生成しています...",
+    });
+
+    try {
+      const canvas = await html2canvas(summaryContentRef.current, {
+        scale: 2, // 高解像度化
+        useCORS: true, // CORS問題を回避（必要な場合）
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'p', // portrait (縦向き)
+        unit: 'px', // 単位
+        format: [canvas.width, canvas.height] // ページサイズをcanvasに合わせる
+      });
+      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+      pdf.save(`${moduleDetail?.title || 'module'}_summary.pdf`); // ファイル名
+
+      toast({
+        title: "ダウンロード完了",
+        description: "要約のPDFをダウンロードしました。",
+      });
+    } catch (error) {
+      console.error("PDF生成エラー:", error);
+      toast({
+        title: "ダウンロードエラー",
+        description: "PDFの生成中にエラーが発生しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
@@ -444,12 +484,30 @@ const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentM
                 このモジュールの主要なポイントを簡潔にまとめています
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent ref={summaryContentRef}>
               {generateSummary()}
             </CardContent>
             <CardFooter>
-              <Button variant="outline" className="w-full">
-                要約をダウンロード
+              <Button 
+                variant="outline" 
+                className="w-full" 
+                onClick={handleDownloadSummary}
+                disabled={isDownloading}
+              >
+                {isDownloading ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    生成中...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" />
+                    要約をPDFでダウンロード
+                  </>
+                )}
               </Button>
             </CardFooter>
           </Card>
@@ -512,7 +570,7 @@ const MaterialContent = ({ activeModule, onStartPractice, moduleDetail, currentM
         </TabsContent>
       </Tabs>
       
-      <div className="sticky bottom-4 flex justify-center z-10 gap-4">
+      <div className="mt-12 mb-8 flex justify-center z-10 gap-4">
         <Button 
           size="lg" 
           onClick={onStartPractice}

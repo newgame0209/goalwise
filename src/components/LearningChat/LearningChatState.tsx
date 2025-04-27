@@ -9,8 +9,6 @@ import {
   generateLearningQuestions, 
   evaluateUserAnswer,
   generateConversationalResponse,
-  generateResponse, 
-  generateExplanation, 
   generateDetailedExplanation,
   adjustExplanationLevel,
   estimateUserUnderstandingLevel,
@@ -415,7 +413,7 @@ function learningChatReducer(state: LearningChatState, action: ActionType): Lear
 export interface LearningChatContextType {
   state: LearningChatState;
   dispatch: React.Dispatch<ActionType>;
-  startSession: (type: ChatSessionType, moduleDetail: ModuleDetail) => Promise<void>;
+  startSession: (type: ChatSessionType, moduleDetail: ModuleDetail, sectionId?: string) => Promise<void>;
   sendMessage: (content: string, isAnswer?: boolean) => Promise<void>;
   completeSession: () => Promise<void>;
   saveProgress: (sessionId: string) => Promise<void>;
@@ -527,19 +525,55 @@ export const LearningChatProvider: React.FC<{ children: ReactNode }> = ({ childr
   // 質問の生成
   const generateQuestions = useCallback(async (
     moduleDetail: ModuleDetail,
-    sessionType: ChatSessionType
+    sessionType: ChatSessionType,
+    sectionId?: string
   ): Promise<LearningQuestion[]> => {
     try {
-      // OpenAI APIを使用して質問を生成
-      const questions = await generateLearningQuestions(
-        moduleDetail,
-        sessionType,
-        sessionType === 'quiz' ? 10 : 5, // クイズモードでは多めの質問を生成
-        getUserLevel()
-      );
-      
-      // バリデーション
-      return questions.map(q => validateLearningQuestion(q));
+      let questions: LearningQuestion[] = [];
+
+      // セクションIDが指定されている場合はそのセクションの質問を使用
+      if (sectionId) {
+        const targetSection = moduleDetail.content.find(sec => sec.id === sectionId);
+        if (targetSection && targetSection.questions && targetSection.questions.length > 0) {
+          questions = targetSection.questions.map((q, idx) => ({
+            id: `${sectionId}-q${idx + 1}`,
+            question: q.question,
+            expectedAnswer: (q as any).answer || (q as any).expectedAnswer || '',
+            hint: q.hint,
+            difficulty: getUserLevel(),
+          }));
+        }
+      }
+
+      // セクションに質問がなかった場合はAI生成 (セクション限定)
+      if (questions.length === 0) {
+        const partialDetail: ModuleDetail = {
+          ...moduleDetail,
+          content: sectionId
+            ? moduleDetail.content.filter(sec => sec.id === sectionId)
+            : moduleDetail.content
+        };
+
+        questions = await generateLearningQuestions(
+          partialDetail,
+          sessionType,
+          sessionType === 'quiz' ? 10 : 5,
+          getUserLevel()
+        );
+      }
+
+      // バリデーション: 不正な質問を除外し、質問オブジェクトそのものを返す
+      const validQuestions = questions.filter(q => validateLearningQuestion(q));
+
+      // ヒントに答えが含まれている場合はマスク
+      const sanitizedQuestions = validQuestions.map(q => {
+        if (q.hint && q.expectedAnswer && q.hint.toLowerCase().includes(q.expectedAnswer.toLowerCase())) {
+          return { ...q, hint: 'もう一度教材を振り返ってみましょう。' };
+        }
+        return q;
+      });
+
+      return sanitizedQuestions;
     } catch (error) {
       console.error('質問生成エラー:', error);
       
@@ -560,7 +594,7 @@ export const LearningChatProvider: React.FC<{ children: ReactNode }> = ({ childr
   }, [getUserLevel]);
   
   // セッションを開始する
-  const startSession = useCallback(async (type: ChatSessionType, moduleDetail: ModuleDetail) => {
+  const startSession = useCallback(async (type: ChatSessionType, moduleDetail: ModuleDetail, sectionId?: string) => {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'START_SESSION', payload: { type, moduleDetail } });
     
@@ -589,7 +623,7 @@ export const LearningChatProvider: React.FC<{ children: ReactNode }> = ({ childr
       
       // 質問生成を試みる
       try {
-        const questions = await generateQuestions(moduleDetail, type);
+        const questions = await generateQuestions(moduleDetail, type, sectionId);
         
         if (questions && questions.length > 0) {
           // 質問をセット
@@ -694,7 +728,8 @@ export const LearningChatProvider: React.FC<{ children: ReactNode }> = ({ childr
       }
       
       // プロファイルデータからレベル情報を抽出
-      const profileAnswers = (profileData.profile_data as any).answers || [];
+      const profileDataAny = (profileData.profile_data || {}) as any;
+      const profileAnswers = profileDataAny.answers || [];
       let explicitLevel: string | null = null;
       
       for (const answer of profileAnswers) {
@@ -740,9 +775,9 @@ export const LearningChatProvider: React.FC<{ children: ReactNode }> = ({ childr
       let totalQuestions = 0;
       
       recentSessions.forEach(session => {
-        if (session.questionsAnswered > 0) {
-          totalCorrect += session.correctAnswers || 0;
-          totalQuestions += session.questionsAnswered;
+        if ((session as any).questionsAnswered > 0) {
+          totalCorrect += (session as any).correctAnswers || 0;
+          totalQuestions += (session as any).questionsAnswered;
         }
       });
       
@@ -794,9 +829,10 @@ export const LearningChatProvider: React.FC<{ children: ReactNode }> = ({ childr
       // 弱点の特定
       const weakPoints: Record<string, number> = {};
       answerHistory.forEach(item => {
-        if (!item.isCorrect && item.category) {
-          weakPoints[item.category] = (weakPoints[item.category] || 0) + 1;
-        }
+        // category フィールドは未使用
+        // if (!item.isCorrect && (item as any).category) {
+        //   weakPoints[(item as any).category as string] = (weakPoints[(item as any).category as string] || 0) + 1;
+        // }
       });
       
       // 最も問題のあるカテゴリーを特定
@@ -866,17 +902,17 @@ export const LearningChatProvider: React.FC<{ children: ReactNode }> = ({ childr
       if (!data) return null;
       
       // プロファイルデータを整形
-      const profileData = data.profile_data || {};
+      const profileDataAny = (data.profile_data || {}) as any;
       
       return {
         id: userId,
         username: data.username || 'ユーザー',
-        currentLevel: profileData.currentLevel || 'intermediate',
-        learningGoals: profileData.goals || [],
-        preferredTopics: profileData.preferredTopics || [],
-        studyHabits: profileData.studyHabits || {},
-        strengths: profileData.strengths || [],
-        weaknesses: profileData.weaknesses || []
+        currentLevel: profileDataAny.currentLevel || 'intermediate',
+        learningGoals: profileDataAny.goals || [],
+        preferredTopics: profileDataAny.preferredTopics || [],
+        studyHabits: profileDataAny.studyHabits || {},
+        strengths: profileDataAny.strengths || [],
+        weaknesses: profileDataAny.weaknesses || []
       };
     } catch (error) {
       console.error('プロファイル取得処理エラー:', error);
@@ -1096,15 +1132,15 @@ export const LearningChatProvider: React.FC<{ children: ReactNode }> = ({ childr
       // 次の質問を設定
       dispatch({ type: 'SET_CURRENT_QUESTION', payload: nextQuestion });
       
-      // 質問番号を計算
-      const questionNumber = askedQuestionIds.length + 1;
-      const totalQuestions = state.activeSession.questions.length;
+      // 質問番号を計算 (配列上のインデックス + 1 で確実に整数にする)
+      const questionIndex = state.activeSession.questions.findIndex(q => q.id === nextQuestion.id);
+      const questionNumber = questionIndex >= 0 ? questionIndex + 1 : askedQuestionIds.length + 1;
       
       // 次の質問をメッセージとして追加
       dispatch({ 
         type: 'ADD_AI_MESSAGE', 
         payload: { 
-          content: `問題 ${questionNumber}/${totalQuestions}: ${nextQuestion.question}${nextQuestion.hint ? `\n\nヒント: ${nextQuestion.hint}` : ''}`, 
+          content: `問題 ${questionNumber}/${state.activeSession?.progress.totalQuestions}: ${nextQuestion.question}${nextQuestion.hint ? `\n\nヒント: ${nextQuestion.hint}` : ''}`, 
           isQuestion: true,
           questionId: nextQuestion.id
         } 
@@ -1126,8 +1162,7 @@ export const LearningChatProvider: React.FC<{ children: ReactNode }> = ({ childr
       // AIによる回答評価
       const evaluation = await evaluateUserAnswer(
         question, 
-        userAnswer,
-        { retries: 2 }
+        userAnswer
       );
       
       console.log('回答評価結果:', evaluation);
@@ -1170,17 +1205,25 @@ export const LearningChatProvider: React.FC<{ children: ReactNode }> = ({ childr
         score: evaluation.score,
         feedback: evaluation.feedback,
         timestamp: new Date().toISOString(),
-        category: question.category
+        timeSpent: 0
       };
       
-      // AIからのフィードバックメッセージを追加
-      let feedbackMessage = `${evaluation.feedback}\n\n`;
-      if (!evaluation.isCorrect && evaluation.correctAnswer) {
-        feedbackMessage += `正解: ${evaluation.correctAnswer}\n\n`;
+      // 自己肯定感を高めるポジティブなフィードバックへ変更
+      let feedbackMessage = `${evaluation.isCorrect ? '🎉 正解です！よくできました！' : '❌ 不正解ですが、大丈夫。次はきっとうまくいきます！'}\n\n`;
+      
+      // AI からの追加フィードバックを簡潔に付加
+      if (evaluation.feedback) {
+        feedbackMessage += `${evaluation.feedback}\n\n`;
       }
+      
+      if (!evaluation.isCorrect && evaluation.correctAnswer) {
+        feedbackMessage += `【正解】${evaluation.correctAnswer}\n\n`;
+      }
+      
       if (evaluation.explanation) {
         feedbackMessage += `解説: ${evaluation.explanation}\n\n`;
       }
+      
       if (evaluation.furtherStudyTips) {
         feedbackMessage += `学習アドバイス: ${evaluation.furtherStudyTips}`;
       }
@@ -1211,7 +1254,9 @@ export const LearningChatProvider: React.FC<{ children: ReactNode }> = ({ childr
             correctAnswers: newCorrectAnswers,
             totalQuestions: progress.totalQuestions,
             completed: false,
-            lastUpdated: new Date().toISOString()
+            lastUpdated: new Date().toISOString(),
+            timeSpent: 0,
+            answerHistory: answerHistoryItem as any
           });
           
           console.log('学習進捗を保存しました');
@@ -1279,7 +1324,9 @@ ${score >= 80 ? '素晴らしい結果です！' : score >= 60 ? '良い成績�
                 correctAnswers: newCorrectAnswers,
                 totalQuestions: totalQuestions,
                 completed: true,
-                lastUpdated: new Date().toISOString()
+                lastUpdated: new Date().toISOString(),
+                timeSpent: 0,
+                answerHistory: answerHistoryItem as any
               });
               
               console.log('セッション完了を保存しました');
@@ -1338,7 +1385,9 @@ ${score >= 80 ? '素晴らしい結果です！' : score >= 60 ? '良い成績�
           correctAnswers: state.activeSession.progress.correctAnswers,
           totalQuestions: state.activeSession.progress.totalQuestions,
           completed: true,
-          lastUpdated: new Date().toISOString()
+          lastUpdated: new Date().toISOString(),
+          timeSpent: 0,
+          answerHistory: state.activeSession.answerHistory as any
         });
       }
       
@@ -1393,7 +1442,7 @@ ${score >= 80 ? '素晴らしい結果です！' : score >= 60 ? '良い成績�
           lastUpdated: new Date().toISOString(),
           timeSpent: sessionTime,
           masteryLevel,
-          answerHistory
+          answerHistory: answerHistory as any
         });
         
         console.log('進捗と回答履歴を保存しました', {
